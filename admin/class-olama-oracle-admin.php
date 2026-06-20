@@ -205,7 +205,8 @@ class Olama_Oracle_Admin {
     }
 
     private function action_form($label, $action, $needs_family = false, $has_offset = false, $has_study_year = false, $study_year = '') {
-        echo '<form method="post" style="background:#fff;border:1px solid #ccd0d4;padding:14px;">';
+        $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : 'olama-oracle-sync-manual';
+        echo '<form method="post" action="' . esc_url(add_query_arg(array('page' => $page), admin_url('admin.php'))) . '" style="background:#fff;border:1px solid #ccd0d4;padding:14px;">';
         wp_nonce_field('olama_oracle_action');
         echo '<input type="hidden" name="olama_oracle_action" value="' . esc_attr($action) . '">';
         if ($needs_family) {

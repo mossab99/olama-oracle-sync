@@ -50,6 +50,12 @@ class Olama_Oracle_Student_Importer {
         }
 
         foreach ($students as $student) {
+            if (!is_array($student)) {
+                $summary['failed']++;
+                $this->logger->log_item($run_id, 'student', null, $oracle_family_id, null, 'skipped', 'failed', 'Student record is not a valid object.');
+                continue;
+            }
+
             $student['family_id'] = isset($student['family_id']) ? $student['family_id'] : $oracle_family_id;
             $import_result = $this->import_record($student, $run_id, $source_endpoint, $study_year);
             $this->merge_summary($summary, $import_result);
@@ -68,7 +74,7 @@ class Olama_Oracle_Student_Importer {
         $run_id = $this->logger->start_run('all_students');
         $study_year = $this->resolve_study_year($study_year);
         $family_table = $wpdb->prefix . 'olama_core_families';
-        $limit = max(1, min(1000, absint(Olama_Oracle_Settings::get('batch_size'))));
+        $limit = $this->family_student_batch_limit();
         $offset = max(0, absint($offset));
         $total_families = (int) $wpdb->get_var('SELECT COUNT(*) FROM `' . esc_sql($family_table) . '`');
         $families = $wpdb->get_col($wpdb->prepare('SELECT oracle_family_id FROM `' . esc_sql($family_table) . '` ORDER BY id ASC LIMIT %d OFFSET %d', $limit, $offset));
@@ -253,21 +259,49 @@ class Olama_Oracle_Student_Importer {
 
     private function extract_students_from_card($data) {
         $students = array();
-        foreach (array('students', 'family_students', 'children') as $key) {
-            $students = array_merge($students, $this->extract_list($data, $key));
-        }
-        if (isset($data['data']) && is_array($data['data'])) {
+
+        foreach ($this->card_student_containers($data) as $container) {
             foreach (array('students', 'family_students', 'children') as $key) {
-                $students = array_merge($students, $this->extract_list($data['data'], $key));
+                if (isset($container[$key]) && is_array($container[$key])) {
+                    $students = array_merge($students, $container[$key]);
+                }
             }
-        }
-        if (isset($data['family_card']) && is_array($data['family_card'])) {
-            foreach (array('students', 'family_students', 'children') as $key) {
-                $students = array_merge($students, $this->extract_list($data['family_card'], $key));
+
+            if ($this->is_list($container)) {
+                $students = array_merge($students, $container);
             }
         }
 
-        return $students;
+        return array_values(array_filter($students, 'is_array'));
+    }
+
+    private function card_student_containers($data) {
+        $containers = array();
+        if (is_array($data)) {
+            $containers[] = $data;
+            foreach (array('data', 'family_card', 'card') as $key) {
+                if (isset($data[$key]) && is_array($data[$key])) {
+                    $containers[] = $data[$key];
+                }
+            }
+            if (isset($data['data']) && is_array($data['data'])) {
+                foreach (array('family_card', 'card') as $key) {
+                    if (isset($data['data'][$key]) && is_array($data['data'][$key])) {
+                        $containers[] = $data['data'][$key];
+                    }
+                }
+            }
+        }
+
+        return $containers;
+    }
+
+    private function is_list($array) {
+        if (!is_array($array) || !$array) {
+            return false;
+        }
+
+        return array_keys($array) === range(0, count($array) - 1);
     }
 
     private function student_year_records($student, $study_year) {
@@ -371,6 +405,15 @@ class Olama_Oracle_Student_Importer {
             'student_years_skipped' => 0,
             'failed' => 0,
         );
+    }
+
+    private function family_student_batch_limit() {
+        $configured = absint(Olama_Oracle_Settings::get('batch_size'));
+        if (!$configured) {
+            $configured = 25;
+        }
+
+        return max(1, min(25, $configured));
     }
 
     private function resolve_study_year($study_year = null) {
