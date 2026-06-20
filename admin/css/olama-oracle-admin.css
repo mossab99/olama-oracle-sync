@@ -1,0 +1,317 @@
+.olama-oracle-admin {
+    --olama-oracle-bg: #f4f6f8;
+    --olama-oracle-surface: #ffffff;
+    --olama-oracle-border: #d9e1ea;
+    --olama-oracle-text: #172033;
+    --olama-oracle-muted: #657286;
+    --olama-oracle-primary: #10233f;
+    --olama-oracle-primary-hover: #1b365f;
+    --olama-oracle-soft: #eef3f8;
+    --olama-oracle-success: #198754;
+    --olama-oracle-danger: #b42318;
+    color: var(--olama-oracle-text);
+}
+
+.olama-oracle-admin .olama-oracle-page {
+    max-width: 1180px;
+    margin: 20px 0 0;
+    padding: 22px;
+    background: var(--olama-oracle-bg);
+    border: 1px solid #e5ebf1;
+    border-radius: 10px;
+}
+
+.olama-oracle-admin .olama-oracle-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 18px;
+    margin-bottom: 18px;
+}
+
+.olama-oracle-admin .olama-oracle-page-title {
+    margin: 0;
+    color: var(--olama-oracle-text);
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.olama-oracle-admin .olama-oracle-page-subtitle,
+.olama-oracle-admin .olama-oracle-section-note {
+    margin: 6px 0 0;
+    color: var(--olama-oracle-muted);
+    font-size: 14px;
+    line-height: 1.7;
+}
+
+.olama-oracle-admin .olama-oracle-stack {
+    display: grid;
+    gap: 18px;
+}
+
+.olama-oracle-admin .olama-oracle-section,
+.olama-oracle-admin #olama-oracle-full-sync {
+    background: var(--olama-oracle-surface) !important;
+    border: 1px solid var(--olama-oracle-border) !important;
+    border-radius: 10px;
+    padding: 18px !important;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.olama-oracle-admin .olama-oracle-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.olama-oracle-admin .olama-oracle-section-title,
+.olama-oracle-admin .olama-oracle-section-header h2,
+.olama-oracle-admin #olama-oracle-full-sync > h2 {
+    margin: 0 !important;
+    color: var(--olama-oracle-text);
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.olama-oracle-admin #olama-oracle-full-sync > h2,
+.olama-oracle-admin #olama-oracle-full-sync > p:first-of-type {
+    display: none;
+}
+
+.olama-oracle-admin .olama-oracle-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.olama-oracle-admin .olama-oracle-kpi {
+    min-height: 82px;
+    padding: 14px;
+    background: #fbfcfe;
+    border: 1px solid var(--olama-oracle-border);
+    border-radius: 8px;
+}
+
+.olama-oracle-admin .olama-oracle-kpi-label {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--olama-oracle-muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.olama-oracle-admin .olama-oracle-kpi-value {
+    display: block;
+    color: var(--olama-oracle-text);
+    font-size: 22px;
+    line-height: 1.2;
+}
+
+.olama-oracle-admin .olama-oracle-control-grid,
+.olama-oracle-admin #olama-oracle-full-sync > div[style*="grid-template-columns"] {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(180px, 1fr)) !important;
+    gap: 14px !important;
+    margin-bottom: 14px !important;
+}
+
+.olama-oracle-admin label {
+    display: grid;
+    gap: 7px;
+    color: var(--olama-oracle-text);
+    font-weight: 650;
+}
+
+.olama-oracle-admin input[type="text"],
+.olama-oracle-admin input[type="password"],
+.olama-oracle-admin input[type="number"],
+.olama-oracle-admin select {
+    min-height: 38px;
+    border: 1px solid #c8d3df;
+    border-radius: 7px;
+    background: #fff;
+    color: var(--olama-oracle-text);
+    box-shadow: none;
+}
+
+.olama-oracle-admin input:focus,
+.olama-oracle-admin select:focus {
+    border-color: var(--olama-oracle-primary);
+    box-shadow: 0 0 0 2px rgba(16, 35, 63, 0.12);
+}
+
+.olama-oracle-admin .olama-oracle-button-row,
+.olama-oracle-admin #olama-oracle-full-sync > p[style*="flex-wrap"] {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 9px !important;
+    margin: 14px 0 !important;
+}
+
+.olama-oracle-admin .olama-oracle-btn,
+.olama-oracle-admin .button.olama-oracle-btn,
+.olama-oracle-admin #olama-oracle-full-sync .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: 7px;
+    border: 1px solid var(--olama-oracle-border);
+    font-weight: 700;
+    box-shadow: none;
+}
+
+.olama-oracle-admin .olama-oracle-btn-primary,
+.olama-oracle-admin .button-primary.olama-oracle-btn,
+.olama-oracle-admin #olama-oracle-full-sync .button-primary {
+    background: var(--olama-oracle-primary);
+    border-color: var(--olama-oracle-primary);
+    color: #fff;
+}
+
+.olama-oracle-admin .olama-oracle-btn-primary:hover,
+.olama-oracle-admin .button-primary.olama-oracle-btn:hover,
+.olama-oracle-admin #olama-oracle-full-sync .button-primary:hover {
+    background: var(--olama-oracle-primary-hover);
+    border-color: var(--olama-oracle-primary-hover);
+    color: #fff;
+}
+
+.olama-oracle-admin .olama-oracle-btn-secondary,
+.olama-oracle-admin .button.olama-oracle-btn-secondary {
+    background: var(--olama-oracle-soft);
+    border-color: #cfdbe7;
+    color: var(--olama-oracle-primary);
+}
+
+.olama-oracle-admin .olama-oracle-btn-ghost,
+.olama-oracle-admin .button.olama-oracle-btn-ghost {
+    background: transparent;
+    color: var(--olama-oracle-muted);
+}
+
+.olama-oracle-admin .olama-oracle-progress,
+.olama-oracle-admin #olama-oracle-full-sync > div[style*="height:16px"] {
+    height: 18px !important;
+    overflow: hidden !important;
+    margin: 16px 0 !important;
+    background: #e8eef5 !important;
+    border: 1px solid #d4dee9 !important;
+    border-radius: 999px;
+}
+
+.olama-oracle-admin .olama-oracle-progress-bar,
+.olama-oracle-admin [data-olama-full-sync-bar] {
+    height: 100% !important;
+    width: 0;
+    background: linear-gradient(90deg, #10233f, #2f5f98) !important;
+    border-radius: inherit;
+    transition: width 180ms ease;
+}
+
+.olama-oracle-admin .olama-oracle-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--olama-oracle-border);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.olama-oracle-admin .olama-oracle-table,
+.olama-oracle-admin #olama-oracle-full-sync table {
+    width: 100%;
+    min-width: 680px;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+.olama-oracle-admin .olama-oracle-table th,
+.olama-oracle-admin .olama-oracle-table td,
+.olama-oracle-admin #olama-oracle-full-sync table th,
+.olama-oracle-admin #olama-oracle-full-sync table td {
+    padding: 11px 12px;
+    border-bottom: 1px solid #edf1f5;
+    text-align: right;
+    vertical-align: top;
+}
+
+.olama-oracle-admin .olama-oracle-table th,
+.olama-oracle-admin #olama-oracle-full-sync table th {
+    width: 240px;
+    background: #f8fafc;
+    color: var(--olama-oracle-muted);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.olama-oracle-admin .olama-oracle-table tr:last-child th,
+.olama-oracle-admin .olama-oracle-table tr:last-child td,
+.olama-oracle-admin #olama-oracle-full-sync table tr:last-child th,
+.olama-oracle-admin #olama-oracle-full-sync table tr:last-child td {
+    border-bottom: 0;
+}
+
+.olama-oracle-admin .olama-oracle-action-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.olama-oracle-admin .olama-oracle-action-card {
+    display: grid;
+    gap: 12px;
+    min-height: 118px;
+    padding: 14px;
+    background: #fbfcfe;
+    border: 1px solid var(--olama-oracle-border);
+    border-radius: 8px;
+}
+
+.olama-oracle-admin .olama-oracle-action-card p,
+.olama-oracle-admin .olama-oracle-settings-form p.submit {
+    margin: 0;
+}
+
+.olama-oracle-admin .olama-oracle-action-card .description {
+    color: var(--olama-oracle-muted);
+}
+
+.olama-oracle-admin .olama-oracle-form-table th {
+    width: 230px;
+    padding-right: 0;
+}
+
+.olama-oracle-admin .olama-oracle-form-table td {
+    padding-left: 0;
+}
+
+.olama-oracle-admin .olama-oracle-sync-message {
+    min-height: 24px;
+    margin: 12px 0 0;
+    color: var(--olama-oracle-primary);
+    font-weight: 800;
+}
+
+.olama-oracle-admin .olama-oracle-notice {
+    margin: 0 0 16px;
+    border-radius: 8px;
+}
+
+@media (max-width: 900px) {
+    .olama-oracle-admin .olama-oracle-kpi-grid,
+    .olama-oracle-admin .olama-oracle-control-grid,
+    .olama-oracle-admin #olama-oracle-full-sync > div[style*="grid-template-columns"],
+    .olama-oracle-admin .olama-oracle-action-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .olama-oracle-admin .olama-oracle-page {
+        padding: 14px;
+    }
+}

@@ -8,6 +8,26 @@
         nextOffset: 0
     };
 
+    $('[data-olama-full-sync-start="students"]').text('تشغيل مزامنة الطلاب كاملة');
+    $('[data-olama-full-sync-start="student_years"]').text('تشغيل مزامنة سنوات الطلاب كاملة');
+    $('[data-olama-full-sync-pause]').text('إيقاف مؤقت');
+    $('[data-olama-full-sync-resume]').text('استكمال');
+    $('[data-olama-full-sync-reset]').text('إعادة ضبط التقدم');
+    $('.olama-oracle-page-subtitle').first().text('تشغيل ومتابعة مزامنة العائلات والطلاب وسنوات الطلاب من Oracle ERP');
+    $('.olama-oracle-full-sync-heading .olama-oracle-section-title').text('مزامنة كاملة تلقائية');
+    $('.olama-oracle-full-sync-heading .olama-oracle-section-note').text('تشغيل مزامنة كاملة على دفعات آمنة بدون الحاجة إلى إدخال offset يدوياً.');
+    $('#olama-oracle-full-sync')
+        .next('.olama-oracle-section')
+        .find('.olama-oracle-section-header > h2')
+        .first()
+        .addClass('olama-oracle-section-title')
+        .text('مزامنة متقدمة بالدفعات');
+    $('#olama-oracle-full-sync')
+        .next('.olama-oracle-section')
+        .find('.olama-oracle-section-note')
+        .first()
+        .text('أدوات يدوية للتشخيص أو تشغيل دفعة محددة فقط.');
+
     function field(name) {
         return $('[data-olama-full-sync-field="' + name + '"]');
     }

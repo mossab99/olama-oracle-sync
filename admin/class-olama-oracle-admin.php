@@ -116,24 +116,26 @@ class Olama_Oracle_Admin {
 
         $runs = $wpdb->prefix . 'olama_oracle_sync_runs';
         $last = $wpdb->get_row("SELECT * FROM `" . esc_sql($runs) . "` ORDER BY id DESC LIMIT 1", ARRAY_A);
-        echo '<div class="wrap"><h1>Olama Oracle Sync</h1>';
+        echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page">';
+        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">Olama Oracle Sync</h1><p class="olama-oracle-page-subtitle">إدارة مزامنة بيانات Oracle ERP إلى جداول Olama Core المحلية</p></div></div>';
         $this->notice();
-        echo '<p>This plugin imports Oracle families, students, and student academic placement into Olama Core only.</p>';
-        echo '<table class="widefat striped"><tbody>';
-        echo '<tr><th>Core dependency</th><td>' . esc_html(defined('OLAMA_CORE_VERSION') ? 'Active, version ' . OLAMA_CORE_VERSION : 'Missing') . '</td></tr>';
-        echo '<tr><th>Sync mode</th><td>' . esc_html(Olama_Oracle_Settings::get('sync_mode') === 'manual' ? 'Manual Only' : 'Scheduled Read-Only') . '</td></tr>';
-        echo '<tr><th>Last run</th><td>' . esc_html($last ? '#' . $last['id'] . ' ' . $last['sync_type'] . ' - ' . $last['status'] : 'None') . '</td></tr>';
-        echo '</tbody></table></div>';
+        echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><h2 class="olama-oracle-section-title">حالة الربط</h2></div>';
+        echo '<div class="olama-oracle-kpi-grid">';
+        echo '<div class="olama-oracle-kpi"><span class="olama-oracle-kpi-label">Olama Core</span><strong class="olama-oracle-kpi-value">' . esc_html(defined('OLAMA_CORE_VERSION') ? 'Active' : 'Missing') . '</strong></div>';
+        echo '<div class="olama-oracle-kpi"><span class="olama-oracle-kpi-label">Sync mode</span><strong class="olama-oracle-kpi-value">' . esc_html(Olama_Oracle_Settings::get('sync_mode') === 'manual' ? 'Manual' : 'Scheduled') . '</strong></div>';
+        echo '<div class="olama-oracle-kpi"><span class="olama-oracle-kpi-label">Last run</span><strong class="olama-oracle-kpi-value">' . esc_html($last ? '#' . $last['id'] . ' ' . $last['status'] : 'None') . '</strong></div>';
+        echo '</div></section></div></div>';
     }
 
     public function settings() {
         $settings = Olama_Oracle_Settings::get();
-        echo '<div class="wrap"><h1>Oracle Sync Settings</h1>';
+        echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page">';
+        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">Oracle Sync Settings</h1><p class="olama-oracle-page-subtitle">إعدادات الاتصال والمزامنة الافتراضية مع Oracle Bridge</p></div></div>';
         $this->notice();
-        echo '<form method="post">';
+        echo '<section class="olama-oracle-section"><form method="post" class="olama-oracle-settings-form">';
         wp_nonce_field('olama_oracle_action');
         echo '<input type="hidden" name="olama_oracle_action" value="save_settings">';
-        echo '<table class="form-table"><tbody>';
+        echo '<table class="form-table olama-oracle-form-table"><tbody>';
         $this->field('Oracle Bridge Base URL', 'base_url', $settings['base_url']);
         $this->field('API Key', 'api_key', $settings['api_key'], 'password');
         $this->field('Default Study Year', 'default_study_year', $settings['default_study_year']);
@@ -142,17 +144,20 @@ class Olama_Oracle_Admin {
         echo '<tr><th>Store Raw Payloads</th><td><select name="settings[store_raw_payloads]"><option value="yes"' . selected($settings['store_raw_payloads'], 'yes', false) . '>Yes</option><option value="no"' . selected($settings['store_raw_payloads'], 'no', false) . '>No</option></select></td></tr>';
         echo '<tr><th>Sync Mode</th><td><select name="settings[sync_mode]"><option value="manual"' . selected($settings['sync_mode'], 'manual', false) . '>Manual Only</option><option value="scheduled_read_only"' . selected($settings['sync_mode'], 'scheduled_read_only', false) . '>Scheduled Read-Only</option></select></td></tr>';
         echo '</tbody></table>';
-        submit_button('Save Settings');
-        echo '</form></div>';
+        submit_button('Save Settings', 'primary olama-oracle-btn olama-oracle-btn-primary');
+        echo '</form></section></div></div>';
     }
 
     public function manual_sync() {
         $study_year = $this->get_default_study_year();
-        echo '<div class="wrap"><h1>Manual Oracle Sync</h1>';
+        echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page">';
+        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">Manual Oracle Sync</h1><p class="olama-oracle-page-subtitle">تشغيل ومتابعة مزامنة العائلات والطلاب وسنوات الطلاب من Oracle ERP</p></div></div>';
         $this->notice();
-        echo '<div style="display:grid;gap:16px;max-width:760px;">';
+        echo '<div class="olama-oracle-stack">';
         $this->full_sync_panel($study_year);
+        echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header">';
         echo '<h2>مزامنة متقدمة بالدفعات</h2>';
+        echo '<p class="olama-oracle-section-note">أدوات يدوية للتشخيص أو تشغيل دفعة محددة فقط.</p></div><div class="olama-oracle-action-grid">';
         $this->action_form('Test Oracle Connection', 'test_connection');
         $this->action_form('Import All Families', 'import_families');
         $this->action_form('Import One Family by Oracle FAMILY_ID', 'import_one_family', true);
@@ -161,10 +166,21 @@ class Olama_Oracle_Admin {
         $this->action_form('Import Student Years for Imported Families Batch', 'import_student_years', false, true, true, $study_year);
         $this->action_form('Import Students by Study Year', 'import_students_by_study_year', false, false, true, $study_year);
         $this->action_form('Run Validation Report', 'run_validation');
-        echo '</div></div>';
+        echo '</div></section></div></div></div>';
     }
 
     public function enqueue_assets($hook) {
+        if (false === strpos($hook, 'olama-oracle-sync')) {
+            return;
+        }
+
+        wp_enqueue_style(
+            'olama-oracle-admin',
+            OLAMA_ORACLE_SYNC_URL . 'admin/css/olama-oracle-admin.css',
+            array(),
+            OLAMA_ORACLE_SYNC_VERSION
+        );
+
         if ('olama-oracle-sync_page_olama-oracle-sync-manual' !== $hook) {
             return;
         }
@@ -222,20 +238,24 @@ class Olama_Oracle_Admin {
         $runs = $wpdb->prefix . 'olama_oracle_sync_runs';
         $items = $wpdb->prefix . 'olama_oracle_sync_items';
         $run_id = isset($_GET['run_id']) ? absint($_GET['run_id']) : 0;
-        echo '<div class="wrap"><h1>Oracle Sync Runs</h1>';
+        echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page">';
+        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">Oracle Sync Runs</h1><p class="olama-oracle-page-subtitle">سجل عمليات المزامنة وعناصرها التفصيلية</p></div></div>';
         if ($run_id) {
             $rows = $wpdb->get_results($wpdb->prepare('SELECT * FROM `' . esc_sql($items) . '` WHERE sync_run_id = %d ORDER BY id DESC LIMIT 500', $run_id), ARRAY_A);
-            echo '<h2>Sync Items for Run #' . esc_html($run_id) . '</h2>';
+            echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><h2 class="olama-oracle-section-title">Sync Items for Run #' . esc_html($run_id) . '</h2></div>';
             $this->table($rows, array('entity_type' => 'Entity Type', 'entity_uid' => 'Entity UID', 'oracle_family_id' => 'Oracle Family ID', 'oracle_student_id' => 'Oracle Student ID', 'operation' => 'Operation', 'status' => 'Status', 'message' => 'Message', 'created_at' => 'Created At'));
+            echo '</section>';
         } else {
             $rows = $wpdb->get_results('SELECT * FROM `' . esc_sql($runs) . '` ORDER BY id DESC LIMIT 100', ARRAY_A);
             foreach ($rows as &$row) {
                 $row['view_items'] = '<a href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-runs&run_id=' . absint($row['id']))) . '">View Items</a>';
             }
             unset($row);
+            echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><h2 class="olama-oracle-section-title">آخر عمليات المزامنة</h2></div>';
             $this->table($rows, array('id' => 'Run ID', 'sync_type' => 'Sync Type', 'status' => 'Status', 'started_at' => 'Started At', 'finished_at' => 'Finished At', 'records_seen' => 'Records Seen', 'records_created' => 'Created', 'records_updated' => 'Updated', 'records_skipped' => 'Skipped', 'records_failed' => 'Failed', 'error_summary' => 'Error Summary', 'view_items' => 'View Items'), true);
+            echo '</section>';
         }
-        echo '</div>';
+        echo '</div></div>';
     }
 
     public function validation() {
@@ -243,20 +263,21 @@ class Olama_Oracle_Admin {
         $failed = $report['Last failed sync items'];
         unset($report['Last failed sync items']);
 
-        echo '<div class="wrap"><h1>Oracle Sync Validation</h1>';
+        echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page">';
+        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">Oracle Sync Validation</h1><p class="olama-oracle-page-subtitle">فحص سريع لجودة بيانات المزامنة المحلية</p></div></div>';
         $this->notice();
-        echo '<form method="post" style="margin-bottom:12px;">';
+        echo '<section class="olama-oracle-section"><form method="post" class="olama-oracle-inline-form">';
         wp_nonce_field('olama_oracle_action');
         echo '<input type="hidden" name="olama_oracle_action" value="run_validation">';
-        submit_button('Run Validation Report', 'secondary', 'submit', false);
+        submit_button('Run Validation Report', 'secondary olama-oracle-btn olama-oracle-btn-secondary', 'submit', false);
         echo '</form>';
-        echo '<table class="widefat striped"><tbody>';
+        echo '<div class="olama-oracle-table-wrap"><table class="olama-oracle-table"><tbody>';
         foreach ($report as $label => $value) {
             echo '<tr><th>' . esc_html($label) . '</th><td>' . esc_html($value) . '</td></tr>';
         }
-        echo '</tbody></table><h2>Last Failed Sync Items</h2>';
+        echo '</tbody></table></div></section><section class="olama-oracle-section"><div class="olama-oracle-section-header"><h2 class="olama-oracle-section-title">Last Failed Sync Items</h2></div>';
         $this->table($failed, array('entity_type' => 'Entity Type', 'entity_uid' => 'Entity UID', 'oracle_family_id' => 'Oracle Family ID', 'oracle_student_id' => 'Oracle Student ID', 'operation' => 'Operation', 'message' => 'Message', 'created_at' => 'Created At'));
-        echo '</div>';
+        echo '</section></div></div>';
     }
 
     private function field($label, $key, $value, $type = 'text') {
@@ -269,6 +290,7 @@ class Olama_Oracle_Admin {
             $configured_limit = 25;
         }
         echo '<section id="olama-oracle-full-sync" style="background:#fff;border:1px solid #ccd0d4;padding:16px;">';
+        echo '<div class="olama-oracle-section-header olama-oracle-full-sync-heading"><div><h2 class="olama-oracle-section-title">مزامنة كاملة تلقائية</h2><p class="olama-oracle-section-note">تشغيل مزامنة كاملة على دفعات آمنة بدون الحاجة إلى إدخال offset يدوياً.</p></div></div>';
         echo '<h2 style="margin-top:0;">مزامنة كاملة تلقائية</h2>';
         echo '<p>تشغيل مزامنة كاملة على دفعات آمنة بدون الحاجة إلى إدخال offset يدوياً.</p>';
         echo '<div style="display:grid;grid-template-columns:repeat(3,minmax(140px,1fr));gap:12px;margin-bottom:12px;">';
@@ -459,7 +481,7 @@ class Olama_Oracle_Admin {
 
     private function action_form($label, $action, $needs_family = false, $has_offset = false, $has_study_year = false, $study_year = '') {
         $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : 'olama-oracle-sync-manual';
-        echo '<form method="post" action="' . esc_url(add_query_arg(array('page' => $page), admin_url('admin.php'))) . '" style="background:#fff;border:1px solid #ccd0d4;padding:14px;">';
+        echo '<form method="post" action="' . esc_url(add_query_arg(array('page' => $page), admin_url('admin.php'))) . '" class="olama-oracle-action-card">';
         wp_nonce_field('olama_oracle_action');
         echo '<input type="hidden" name="olama_oracle_action" value="' . esc_attr($action) . '">';
         if ($needs_family) {
@@ -471,7 +493,7 @@ class Olama_Oracle_Admin {
         if ($has_offset) {
             echo '<p><label>Start offset <input type="number" min="0" step="1" name="offset" class="small-text" value="0"></label> <span class="description">Run the next batch using the offset shown in the previous result.</span></p>';
         }
-        submit_button($label, 'primary', 'submit', false);
+        submit_button($label, 'primary olama-oracle-btn olama-oracle-btn-primary', 'submit', false);
         echo '</form>';
     }
 
@@ -484,11 +506,11 @@ class Olama_Oracle_Admin {
             return;
         }
         $class = isset($_GET['olama_success']) && $_GET['olama_success'] === '1' ? 'notice-success' : 'notice-error';
-        echo '<div class="notice ' . esc_attr($class) . ' is-dismissible"><p>' . esc_html(wp_unslash($_GET['olama_message'])) . '</p></div>';
+        echo '<div class="notice ' . esc_attr($class) . ' is-dismissible olama-oracle-notice"><p>' . esc_html(wp_unslash($_GET['olama_message'])) . '</p></div>';
     }
 
     private function table($rows, $columns, $allow_html = false) {
-        echo '<table class="widefat striped"><thead><tr>';
+        echo '<div class="olama-oracle-table-wrap"><table class="olama-oracle-table"><thead><tr>';
         foreach ($columns as $label) {
             echo '<th>' . esc_html($label) . '</th>';
         }
@@ -504,6 +526,6 @@ class Olama_Oracle_Admin {
             }
             echo '</tr>';
         }
-        echo '</tbody></table>';
+        echo '</tbody></table></div>';
     }
 }
