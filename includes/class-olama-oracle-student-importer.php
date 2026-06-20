@@ -68,18 +68,20 @@ class Olama_Oracle_Student_Importer {
         return array('success' => true, 'message' => $this->summary_message('Students import finished.', $summary, $study_year, null, null), 'run_id' => $run_id, 'summary' => $summary, 'study_year' => $study_year);
     }
 
-    public function import_all_imported_families($offset = 0, $study_year = null) {
+    public function import_all_imported_families($offset = 0, $study_year = null, $limit = null) {
         global $wpdb;
 
         $run_id = $this->logger->start_run('all_students');
         $study_year = $this->resolve_study_year($study_year);
         $family_table = $wpdb->prefix . 'olama_core_families';
-        $limit = $this->family_student_batch_limit();
+        $limit = $this->family_student_batch_limit($limit);
         $offset = max(0, absint($offset));
         $total_families = (int) $wpdb->get_var('SELECT COUNT(*) FROM `' . esc_sql($family_table) . '`');
         $families = $wpdb->get_col($wpdb->prepare('SELECT oracle_family_id FROM `' . esc_sql($family_table) . '` ORDER BY id ASC LIMIT %d OFFSET %d', $limit, $offset));
         $summary = $this->empty_summary();
         $summary['families'] = count($families);
+        $summary['last_family_id'] = $families ? end($families) : '';
+        reset($families);
 
         foreach ($families as $family_id) {
             $result = $this->import_family($family_id, $run_id, $study_year);
@@ -100,8 +102,8 @@ class Olama_Oracle_Student_Importer {
         return array('success' => true, 'message' => $message, 'run_id' => $run_id, 'next_offset' => $next_offset < $total_families ? $next_offset : null, 'summary' => $summary, 'study_year' => $study_year);
     }
 
-    public function import_student_years_for_imported_families($offset = 0, $study_year = null) {
-        return $this->import_all_imported_families($offset, $study_year);
+    public function import_student_years_for_imported_families($offset = 0, $study_year = null, $limit = null) {
+        return $this->import_all_imported_families($offset, $study_year, $limit);
     }
 
     public function import_students_by_study_year($study_year = null) {
@@ -367,6 +369,9 @@ class Olama_Oracle_Student_Importer {
                 $summary[$key] = isset($summary[$key]) ? $summary[$key] + (int) $result[$key] : (int) $result[$key];
             }
         }
+        if (!empty($result['last_family_id'])) {
+            $summary['last_family_id'] = $result['last_family_id'];
+        }
     }
 
     private function summary_message($prefix, $summary, $study_year, $offset, $limit) {
@@ -404,16 +409,17 @@ class Olama_Oracle_Student_Importer {
             'student_years_updated' => 0,
             'student_years_skipped' => 0,
             'failed' => 0,
+            'last_family_id' => '',
         );
     }
 
-    private function family_student_batch_limit() {
-        $configured = absint(Olama_Oracle_Settings::get('batch_size'));
+    private function family_student_batch_limit($limit = null) {
+        $configured = null === $limit ? absint(Olama_Oracle_Settings::get('batch_size')) : absint($limit);
         if (!$configured) {
             $configured = 25;
         }
 
-        return max(1, min(25, $configured));
+        return max(1, min(100, $configured));
     }
 
     private function resolve_study_year($study_year = null) {
