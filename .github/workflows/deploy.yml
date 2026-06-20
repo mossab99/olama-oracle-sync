@@ -1,0 +1,60 @@
+name: Deploy Olama Oracle Sync Plugin to Contabo
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy Olama Oracle Sync Plugin via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            set -euxo pipefail
+
+            BASE_DIR="/home/olama/htdocs/olama.online/wp-content/plugins"
+            PLUGIN_DIR="$BASE_DIR/olama-oracle-sync"
+            REPO_URL="https://github.com/mossab99/olama-oracle-sync.git"
+            BRANCH="main"
+
+            if [ ! -d "$BASE_DIR" ]; then
+              echo "ERROR: WordPress plugins directory not found: $BASE_DIR"
+              exit 1
+            fi
+
+            if [ ! -d "$PLUGIN_DIR/.git" ]; then
+              echo "Plugin folder not found as Git repo. Cloning fresh copy..."
+
+              cd "$BASE_DIR"
+
+              rm -rf "$PLUGIN_DIR"
+
+              git clone --branch "$BRANCH" "$REPO_URL" "$PLUGIN_DIR"
+            else
+              echo "Updating existing plugin..."
+
+              cd "$PLUGIN_DIR"
+
+              git config --global --add safe.directory "$PLUGIN_DIR"
+              git remote set-url origin "$REPO_URL"
+
+              git fetch origin "$BRANCH"
+              git reset --hard "origin/$BRANCH"
+              git clean -fd
+            fi
+
+            chown -R www-data:www-data "$PLUGIN_DIR"
+
+            find "$PLUGIN_DIR" -type d -exec chmod 755 {} \;
+            find "$PLUGIN_DIR" -type f -exec chmod 644 {} \;
+
+            echo "Olama Oracle Sync deployment completed successfully"
