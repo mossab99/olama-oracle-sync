@@ -28,25 +28,30 @@ class Olama_Oracle_Student_Importer {
         }
 
         $query_args = array('study_year' => $study_year);
-        $result = $this->client->get_family_students($oracle_family_id, $query_args);
-        if (!$result['success']) {
-            if ($own_run) {
-                $this->logger->finish_run($run_id, 'failed', $result['message']);
-            }
-            return $result;
+        $source_endpoint = '/api/families/' . $oracle_family_id . '/card';
+        $card = $this->client->get_family_card($oracle_family_id, $query_args);
+        $students = array();
+
+        if ($card['success']) {
+            $students = $this->extract_students_from_card($card['data']);
         }
 
-        $students = $this->extract_list($result['data'], 'students');
         if (!$students) {
-            $card = $this->client->get_family_card($oracle_family_id, $query_args);
-            if ($card['success']) {
-                $students = $this->extract_students_from_card($card['data']);
+            $source_endpoint = '/api/families/' . $oracle_family_id . '/students';
+            $result = $this->client->get_family_students($oracle_family_id, $query_args);
+            if (!$result['success']) {
+                if ($own_run) {
+                    $this->logger->finish_run($run_id, 'failed', $result['message']);
+                }
+                return $result;
             }
+
+            $students = $this->extract_list($result['data'], 'students');
         }
 
         foreach ($students as $student) {
             $student['family_id'] = isset($student['family_id']) ? $student['family_id'] : $oracle_family_id;
-            $import_result = $this->import_record($student, $run_id, '/api/families/' . $oracle_family_id . '/students', $study_year);
+            $import_result = $this->import_record($student, $run_id, $source_endpoint, $study_year);
             $this->merge_summary($summary, $import_result);
         }
 
