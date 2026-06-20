@@ -27,8 +27,12 @@ class Olama_Oracle_Api_Client {
         return $this->request('GET', '/api/families/' . rawurlencode($oracle_family_id));
     }
 
-    public function get_family_students($oracle_family_id) {
-        return $this->request('GET', '/api/families/' . rawurlencode($oracle_family_id) . '/students');
+    public function get_family_card($oracle_family_id, $params = array()) {
+        return $this->request('GET', '/api/families/' . rawurlencode($oracle_family_id) . '/card', $params);
+    }
+
+    public function get_family_students($oracle_family_id, $params = array()) {
+        return $this->request('GET', '/api/families/' . rawurlencode($oracle_family_id) . '/students', $params);
     }
 
     public function get_students($params = array()) {

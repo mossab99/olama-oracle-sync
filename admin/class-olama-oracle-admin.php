@@ -34,6 +34,7 @@ class Olama_Oracle_Admin {
 
         check_admin_referer('olama_oracle_action');
         $action = sanitize_text_field($_POST['olama_oracle_action']);
+        $study_year = isset($_POST['study_year']) ? sanitize_text_field(wp_unslash($_POST['study_year'])) : $this->get_default_study_year();
         $message = '';
         $success = true;
 
@@ -66,7 +67,7 @@ class Olama_Oracle_Admin {
         } elseif ('import_family_students' === $action) {
             $family_id = isset($_POST['oracle_family_id']) ? sanitize_text_field(wp_unslash($_POST['oracle_family_id'])) : '';
             if ($family_id) {
-                $result = (new Olama_Oracle_Student_Importer($this->client, $this->logger))->import_family($family_id);
+                $result = (new Olama_Oracle_Student_Importer($this->client, $this->logger))->import_family($family_id, null, $study_year);
             } else {
                 $run_id = $this->logger->start_run('family_students');
                 $this->logger->log_item($run_id, 'student', null, null, null, 'failed', 'failed', 'Oracle FAMILY_ID is required.');
@@ -76,11 +77,17 @@ class Olama_Oracle_Admin {
             $success = $result['success'];
             $message = $result['message'];
         } elseif ('import_all_students' === $action) {
-            $result = (new Olama_Oracle_Student_Importer($this->client, $this->logger))->import_all_imported_families();
+            $offset = isset($_POST['offset']) ? absint($_POST['offset']) : 0;
+            $result = (new Olama_Oracle_Student_Importer($this->client, $this->logger))->import_all_imported_families($offset, $study_year);
+            $success = $result['success'];
+            $message = $result['message'];
+        } elseif ('import_student_years' === $action) {
+            $offset = isset($_POST['offset']) ? absint($_POST['offset']) : 0;
+            $result = (new Olama_Oracle_Student_Importer($this->client, $this->logger))->import_student_years_for_imported_families($offset, $study_year);
             $success = $result['success'];
             $message = $result['message'];
         } elseif ('import_students_by_study_year' === $action) {
-            $result = (new Olama_Oracle_Student_Importer($this->client, $this->logger))->import_students_by_study_year();
+            $result = (new Olama_Oracle_Student_Importer($this->client, $this->logger))->import_students_by_study_year($study_year);
             $success = $result['success'];
             $message = $result['message'];
         } elseif ('run_validation' === $action) {
@@ -135,15 +142,17 @@ class Olama_Oracle_Admin {
     }
 
     public function manual_sync() {
+        $study_year = $this->get_default_study_year();
         echo '<div class="wrap"><h1>Manual Oracle Sync</h1>';
         $this->notice();
         echo '<div style="display:grid;gap:16px;max-width:760px;">';
         $this->action_form('Test Oracle Connection', 'test_connection');
         $this->action_form('Import All Families', 'import_families');
         $this->action_form('Import One Family by Oracle FAMILY_ID', 'import_one_family', true);
-        $this->action_form('Import Students for One Family', 'import_family_students', true);
-        $this->action_form('Import All Students for Imported Families', 'import_all_students');
-        $this->action_form('Import Students by Default Study Year', 'import_students_by_study_year');
+        $this->action_form('Import Students for One Family', 'import_family_students', true, false, true, $study_year);
+        $this->action_form('Import Students for Imported Families Batch', 'import_all_students', false, true, true, $study_year);
+        $this->action_form('Import Student Years for Imported Families Batch', 'import_student_years', false, true, true, $study_year);
+        $this->action_form('Import Students by Study Year', 'import_students_by_study_year', false, false, true, $study_year);
         $this->action_form('Run Validation Report', 'run_validation');
         echo '</div></div>';
     }
@@ -195,15 +204,25 @@ class Olama_Oracle_Admin {
         echo '<tr><th><label for="olama_' . esc_attr($key) . '">' . esc_html($label) . '</label></th><td><input class="regular-text" id="olama_' . esc_attr($key) . '" type="' . esc_attr($type) . '" name="settings[' . esc_attr($key) . ']" value="' . esc_attr($value) . '"></td></tr>';
     }
 
-    private function action_form($label, $action, $needs_family = false) {
+    private function action_form($label, $action, $needs_family = false, $has_offset = false, $has_study_year = false, $study_year = '') {
         echo '<form method="post" style="background:#fff;border:1px solid #ccd0d4;padding:14px;">';
         wp_nonce_field('olama_oracle_action');
         echo '<input type="hidden" name="olama_oracle_action" value="' . esc_attr($action) . '">';
         if ($needs_family) {
             echo '<p><label>Oracle FAMILY_ID <input type="text" name="oracle_family_id" class="regular-text" required></label></p>';
         }
+        if ($has_study_year) {
+            echo '<p><label>Study Year <input type="text" name="study_year" class="regular-text" value="' . esc_attr($study_year) . '" required></label></p>';
+        }
+        if ($has_offset) {
+            echo '<p><label>Start offset <input type="number" min="0" step="1" name="offset" class="small-text" value="0"></label> <span class="description">Run the next batch using the offset shown in the previous result.</span></p>';
+        }
         submit_button($label, 'primary', 'submit', false);
         echo '</form>';
+    }
+
+    private function get_default_study_year() {
+        return sanitize_text_field((string) Olama_Oracle_Settings::get('default_study_year'));
     }
 
     private function notice() {

@@ -16,23 +16,44 @@ class Olama_Oracle_Family_Importer {
     public function import_all($run_id = null) {
         $own_run = !$run_id;
         $run_id = $run_id ?: $this->logger->start_run('families');
-        $result = $this->client->get_families(array('limit' => Olama_Oracle_Settings::get('batch_size')));
+        $limit = max(1, min(1000, absint(Olama_Oracle_Settings::get('batch_size'))));
+        $offset = 0;
+        $seen = 0;
+        $previous_first_id = null;
 
-        if (!$result['success']) {
-            $this->logger->finish_run($run_id, 'failed', $result['message']);
-            return $result;
-        }
+        do {
+            $result = $this->client->get_families(array('limit' => $limit, 'offset' => $offset));
 
-        $families = $this->extract_list($result['data'], 'families');
-        foreach ($families as $family) {
-            $this->import_record($family, $run_id, '/api/families');
+            if (!$result['success']) {
+                $this->logger->finish_run($run_id, 'failed', $result['message']);
+                return $result;
+            }
+
+            $families = $this->extract_list($result['data'], 'families');
+            $first_id = $families && is_array($families[0]) ? $this->first($families[0], array('family_id', 'oracle_family_id')) : null;
+            if ($first_id && $previous_first_id && (string) $first_id === (string) $previous_first_id) {
+                $this->logger->log_item($run_id, 'family', null, null, null, 'skipped', 'failed', 'Oracle bridge returned the same families page again; stopping to avoid duplicate pagination loop.');
+                break;
+            }
+            $previous_first_id = $first_id;
+
+            foreach ($families as $family) {
+                $this->import_record($family, $run_id, '/api/families');
+                $seen++;
+            }
+
+            $offset += $limit;
+        } while (count($families) === $limit);
+
+        if (0 === $seen && $offset > $limit) {
+            $this->logger->log_item($run_id, 'family', null, null, null, 'skipped', 'failed', 'No families were returned by the Oracle bridge.');
         }
 
         if ($own_run) {
             $this->logger->finish_run($run_id);
         }
 
-        return array('success' => true, 'message' => 'Families import finished.', 'run_id' => $run_id);
+        return array('success' => true, 'message' => 'Families import finished. Records received: ' . $seen . '.', 'run_id' => $run_id);
     }
 
     public function import_one($oracle_family_id, $run_id = null) {
@@ -66,8 +87,13 @@ class Olama_Oracle_Family_Importer {
                 'mother_mobile' => isset($family['mother_mobile']) ? $family['mother_mobile'] : '',
                 'primary_mobile' => isset($family['primary_mobile']) ? $family['primary_mobile'] : (isset($family['father_mobile']) ? $family['father_mobile'] : ''),
                 'email' => isset($family['email']) ? $family['email'] : '',
-                'address' => isset($family['address']) ? $family['address'] : '',
-                'family_status' => isset($family['family_status']) ? $family['family_status'] : '',
+                'address' => $this->first($family, array('address', 'family_address')),
+                'family_address' => $this->first($family, array('family_address', 'address')),
+                'trans_region_id' => $this->first($family, array('trans_region_id', 'transportation_region_id', 'region_id')),
+                'trans_region_name' => $this->first($family, array('trans_region_name', 'transportation_region_name', 'region_name', 'area_name')),
+                'family_status' => $this->first($family, array('family_status', 'status')),
+                'family_status_name' => $this->first($family, array('family_status_name', 'status_name')),
+                'students_count' => $this->first($family, array('students_count', 'student_count', 'children_count')),
                 'raw' => $family,
             );
             $result = olama_core()->families()->upsert_from_source($data);
@@ -87,5 +113,15 @@ class Olama_Oracle_Family_Importer {
             return $data['data'];
         }
         return is_array($data) ? $data : array();
+    }
+
+    private function first($data, $keys, $default = '') {
+        foreach ($keys as $key) {
+            if (isset($data[$key]) && $data[$key] !== '') {
+                return $data[$key];
+            }
+        }
+
+        return $default;
     }
 }
