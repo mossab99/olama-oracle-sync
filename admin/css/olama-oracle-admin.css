@@ -315,3 +315,586 @@
         padding: 14px;
     }
 }
+
+.olama-oracle-sync-page {
+    max-width: 1120px !important;
+}
+
+.olama-oracle-header-actions,
+.olama-oracle-progress-footer,
+.olama-oracle-connection-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.olama-oracle-connection-card {
+    padding: 14px 16px;
+    background: #fff;
+    border: 1px solid var(--olama-oracle-border);
+    border-radius: 10px;
+}
+
+.olama-oracle-connection-card > div {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    column-gap: 9px;
+}
+
+.olama-oracle-connection-card p {
+    grid-column: 2;
+    margin: 3px 0 0;
+    color: var(--olama-oracle-muted);
+}
+
+.olama-oracle-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--olama-oracle-danger);
+    box-shadow: 0 0 0 4px rgba(180, 35, 24, .1);
+}
+
+.olama-oracle-connection-card.is-ready .olama-oracle-status-dot {
+    background: var(--olama-oracle-success);
+    box-shadow: 0 0 0 4px rgba(25, 135, 84, .1);
+}
+
+.olama-oracle-sync-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.olama-oracle-sync-choice {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 330px;
+    padding: 22px;
+    background: #fff;
+    border: 1px solid var(--olama-oracle-border);
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .05);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+
+.olama-oracle-sync-choice:hover {
+    transform: translateY(-2px);
+    border-color: #b7c6d6;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, .08);
+}
+
+.olama-oracle-sync-choice-primary {
+    border-top: 4px solid var(--olama-oracle-primary);
+}
+
+.olama-oracle-choice-icon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--olama-oracle-soft);
+    color: var(--olama-oracle-primary);
+    font-size: 22px;
+}
+
+.olama-oracle-sync-choice h2,
+.olama-oracle-progress-heading h2 {
+    margin: 4px 0 7px;
+    color: var(--olama-oracle-text);
+    font-size: 21px;
+}
+
+.olama-oracle-sync-choice p,
+.olama-oracle-progress-heading p {
+    margin: 0;
+    color: var(--olama-oracle-muted);
+    line-height: 1.7;
+}
+
+.olama-oracle-eyebrow {
+    color: #4f6680;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .04em;
+}
+
+.olama-oracle-sync-choice > .olama-oracle-btn {
+    width: 100%;
+    min-height: 46px;
+    margin-top: auto;
+    gap: 7px;
+}
+
+.olama-oracle-single-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 12px;
+}
+
+.olama-oracle-single-fields label {
+    font-size: 12px;
+}
+
+.olama-oracle-progress-card {
+    padding: 22px;
+    background: #fff;
+    border: 1px solid var(--olama-oracle-border);
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .05);
+}
+
+.olama-oracle-progress-card.is-complete {
+    border-color: rgba(25, 135, 84, .45);
+}
+
+.olama-oracle-progress-card.has-error {
+    border-color: rgba(180, 35, 24, .5);
+}
+
+.olama-oracle-progress-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.olama-oracle-progress-percent {
+    color: var(--olama-oracle-primary);
+    font-size: 30px;
+    font-variant-numeric: tabular-nums;
+}
+
+.olama-oracle-phase-list {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin: 16px 0;
+}
+
+.olama-oracle-phase-list span {
+    padding: 9px 12px;
+    background: #f6f8fb;
+    border: 1px solid #e3e9f0;
+    border-radius: 8px;
+    color: var(--olama-oracle-muted);
+    text-align: center;
+}
+
+.olama-oracle-phase-list span.is-active {
+    background: #eaf1f8;
+    border-color: #9db5ce;
+    color: var(--olama-oracle-primary);
+}
+
+.olama-oracle-phase-list span.is-complete {
+    background: #edf8f2;
+    border-color: #a7d9bd;
+    color: #11663f;
+}
+
+.olama-oracle-result-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.olama-oracle-result-grid > div {
+    padding: 13px;
+    background: #f8fafc;
+    border: 1px solid #e6ebf1;
+    border-radius: 9px;
+}
+
+.olama-oracle-result-grid span {
+    display: block;
+    min-height: 32px;
+    color: var(--olama-oracle-muted);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.olama-oracle-result-grid strong {
+    display: block;
+    margin-top: 6px;
+    color: var(--olama-oracle-text);
+    font-size: 22px;
+}
+
+.olama-oracle-progress-footer {
+    min-height: 38px;
+    margin-top: 14px;
+    color: var(--olama-oracle-muted);
+}
+
+.olama-oracle-progress-footer [data-olama-full-sync-links] {
+    display: flex;
+    gap: 8px;
+}
+
+.olama-oracle-progress-footer [hidden] {
+    display: none !important;
+}
+
+.olama-oracle-sync-choice.is-busy {
+    opacity: .7;
+}
+
+.olama-oracle-dashboard-card {
+    padding: 22px;
+    background: #fff;
+    border: 1px solid var(--olama-oracle-border);
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .05);
+    scroll-margin-top: 40px;
+}
+
+.olama-oracle-validation-summary {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    margin-bottom: 14px;
+    padding: 15px;
+    border: 1px solid;
+    border-radius: 10px;
+}
+
+.olama-oracle-validation-summary > .dashicons {
+    width: 30px;
+    height: 30px;
+    font-size: 30px;
+}
+
+.olama-oracle-validation-summary strong {
+    display: block;
+    font-size: 15px;
+}
+
+.olama-oracle-validation-summary p {
+    margin: 3px 0 0;
+}
+
+.olama-oracle-validation-summary.is-healthy {
+    background: #edf8f2;
+    border-color: #a7d9bd;
+    color: #11663f;
+}
+
+.olama-oracle-validation-summary.has-warnings {
+    background: #fff8e8;
+    border-color: #ecd18c;
+    color: #7c5200;
+}
+
+.olama-oracle-validation-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.olama-oracle-validation-grid > div {
+    padding: 13px;
+    background: #f8fafc;
+    border: 1px solid #e6ebf1;
+    border-radius: 9px;
+}
+
+.olama-oracle-validation-grid > div.is-good {
+    border-color: #c5e4d3;
+}
+
+.olama-oracle-validation-grid > div.has-warning,
+.olama-oracle-validation-grid > div.has-issue {
+    background: #fffaf0;
+    border-color: #ecd18c;
+}
+
+.olama-oracle-validation-grid span {
+    display: block;
+    min-height: 32px;
+    color: var(--olama-oracle-muted);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.olama-oracle-validation-grid strong {
+    display: block;
+    margin-top: 6px;
+    font-size: 22px;
+}
+
+.olama-oracle-validation-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 14px 0 0;
+    color: var(--olama-oracle-muted);
+}
+
+.olama-oracle-runs-table {
+    min-width: 900px !important;
+}
+
+.olama-oracle-runs-table th {
+    width: auto !important;
+    white-space: nowrap;
+}
+
+.olama-oracle-runs-table td {
+    vertical-align: middle !important;
+}
+
+.olama-oracle-status-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 25px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: #eef2f6;
+    color: #536276;
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.olama-oracle-status-pill.status-completed {
+    background: #e8f6ee;
+    color: #11663f;
+}
+
+.olama-oracle-status-pill.status-running {
+    background: #eaf1f8;
+    color: #244f7c;
+}
+
+.olama-oracle-status-pill.status-failed,
+.olama-oracle-status-pill.status-completed_with_errors {
+    background: #fcecea;
+    color: #9d241b;
+}
+
+.olama-oracle-run-result {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.olama-oracle-run-result span {
+    padding: 3px 7px;
+    border-radius: 5px;
+    background: #f1f4f7;
+    color: #526174;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.olama-oracle-run-result .is-created {
+    background: #e8f6ee;
+    color: #11663f;
+}
+
+.olama-oracle-run-result .is-updated {
+    background: #eaf1f8;
+    color: #244f7c;
+}
+
+.olama-oracle-run-result .is-failed {
+    background: #fcecea;
+    color: #9d241b;
+}
+
+.olama-oracle-empty-state {
+    padding: 28px !important;
+    color: var(--olama-oracle-muted);
+    text-align: center !important;
+}
+
+.olama-api-map-intro {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-color: #b9d8ee;
+    background: #f2f8fc;
+}
+
+.olama-api-map-intro p {
+    margin: 5px 0 0;
+    color: var(--olama-oracle-muted);
+}
+
+.olama-api-map-intro .dashicons {
+    width: 38px;
+    height: 38px;
+    color: #28648c;
+    font-size: 38px;
+}
+
+.olama-api-map-controls {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(130px, 1fr));
+    gap: 12px;
+}
+
+.olama-api-map-controls label span {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--olama-oracle-muted);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.olama-api-map-controls input,
+.olama-api-map-controls select {
+    width: 100%;
+    min-height: 40px;
+}
+
+.olama-api-map-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 9px;
+    margin-top: 16px;
+}
+
+#olama-api-map-progress {
+    color: var(--olama-oracle-muted);
+    font-weight: 700;
+}
+
+.olama-api-map-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.olama-api-map-summary > div {
+    padding: 16px 18px;
+    border: 1px solid var(--olama-oracle-border);
+    border-radius: 12px;
+    background: #fff;
+}
+
+.olama-api-map-summary span {
+    display: block;
+    color: var(--olama-oracle-muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.olama-api-map-summary strong {
+    display: block;
+    margin-top: 5px;
+    font-size: 25px;
+}
+
+.olama-api-map-summary .is-pass strong { color: #11663f; }
+.olama-api-map-summary .is-fail strong { color: #9d241b; }
+
+.olama-api-map-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.olama-api-map-table {
+    width: 100%;
+    min-width: 1250px;
+    border-collapse: collapse;
+}
+
+.olama-api-map-table th,
+.olama-api-map-table td {
+    padding: 11px 10px;
+    border-bottom: 1px solid var(--olama-oracle-border);
+    text-align: right;
+    vertical-align: top;
+}
+
+.olama-api-map-table th {
+    background: #f8fafc;
+    color: var(--olama-oracle-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+}
+
+.olama-api-map-table td:nth-child(3) {
+    min-width: 285px;
+}
+
+.olama-api-map-table code {
+    display: block;
+    margin-top: 6px;
+    color: #334155;
+    font-size: 11px;
+    text-align: left;
+    overflow-wrap: anywhere;
+}
+
+.olama-api-group,
+.olama-api-integration,
+.olama-api-result-status {
+    display: inline-flex;
+    align-items: center;
+    min-height: 25px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: #eef2f6;
+    color: #536276;
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.olama-api-integration.is-integrated,
+.olama-api-result-status.is-pass { background: #e8f6ee; color: #11663f; }
+.olama-api-integration.is-planned { background: #eaf1f8; color: #244f7c; }
+.olama-api-integration.is-projection { background: #f3effb; color: #6943a5; }
+.olama-api-integration.is-diagnostic { background: #fff8e8; color: #7c5200; }
+.olama-api-integration.is-deferred,
+.olama-api-result-status.is-fail { background: #fcecea; color: #9d241b; }
+.olama-api-result-status.is-testing { background: #fff8e8; color: #7c5200; }
+
+.olama-api-result small {
+    display: block;
+    max-width: 330px;
+    margin-top: 6px;
+    color: var(--olama-oracle-muted);
+    line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+    .olama-oracle-sync-actions,
+    .olama-oracle-result-grid,
+    .olama-oracle-validation-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .olama-oracle-page-header,
+    .olama-oracle-connection-card,
+    .olama-oracle-progress-heading,
+    .olama-oracle-progress-footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .olama-api-map-controls {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .olama-oracle-sync-actions,
+    .olama-oracle-result-grid,
+    .olama-oracle-validation-grid,
+    .olama-oracle-phase-list,
+    .olama-oracle-single-fields,
+    .olama-api-map-controls,
+    .olama-api-map-summary {
+        grid-template-columns: 1fr;
+    }
+}

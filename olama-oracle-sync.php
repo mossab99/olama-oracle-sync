@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Olama Oracle Sync
  * Description: Standalone Oracle bridge sync plugin for importing Oracle families and students into Olama Core.
- * Version: 0.1.0
+ * Version: 0.2.0
  * Author: Olama
  */
 
@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('OLAMA_ORACLE_SYNC_VERSION', '0.1.0');
+define('OLAMA_ORACLE_SYNC_VERSION', '0.2.0');
 define('OLAMA_ORACLE_SYNC_FILE', __FILE__);
 define('OLAMA_ORACLE_SYNC_PATH', plugin_dir_path(__FILE__));
 define('OLAMA_ORACLE_SYNC_URL', plugin_dir_url(__FILE__));
@@ -41,6 +41,48 @@ function olama_oracle_sync_api_get($path, $query_args = array()) {
     $client = new Olama_Oracle_Api_Client();
 
     return $client->get($path, is_array($query_args) ? $query_args : array());
+}
+
+/**
+ * Refresh one family and every Core-owned domain attached to it.
+ *
+ * Olama Core deliberately does not call Oracle endpoints itself. This command is
+ * exposed by the ingestion plugin so Core screens can request a refresh and then
+ * continue reading the canonical local tables.
+ */
+function olama_oracle_sync_refresh_family($oracle_family_id, $study_year = '') {
+    $oracle_family_id = absint($oracle_family_id);
+    if ($oracle_family_id <= 0 || !function_exists('olama_core')) {
+        return array('success' => false, 'message' => 'A valid family ID and Olama Core are required.');
+    }
+
+    foreach (array(
+        'Olama_Oracle_Settings' => 'includes/class-olama-oracle-settings.php',
+        'Olama_Oracle_Api_Client' => 'includes/class-olama-oracle-api-client.php',
+        'Olama_Oracle_Sync_Logger' => 'includes/class-olama-oracle-sync-logger.php',
+        'Olama_Oracle_Family_Importer' => 'includes/class-olama-oracle-family-importer.php',
+        'Olama_Oracle_Student_Importer' => 'includes/class-olama-oracle-student-importer.php',
+    ) as $class_name => $relative_file) {
+        if (!class_exists($class_name)) {
+            require_once OLAMA_ORACLE_SYNC_PATH . $relative_file;
+        }
+    }
+
+    $client = new Olama_Oracle_Api_Client();
+    $logger = new Olama_Oracle_Sync_Logger();
+    $run_id = $logger->start_run('family_refresh');
+    $family_result = (new Olama_Oracle_Family_Importer($client, $logger))->import_one($oracle_family_id, $run_id);
+
+    if (empty($family_result['success'])) {
+        $logger->finish_run($run_id, 'failed', isset($family_result['message']) ? $family_result['message'] : 'Family refresh failed.');
+        return $family_result;
+    }
+
+    $result = (new Olama_Oracle_Student_Importer($client, $logger))->import_family($oracle_family_id, $run_id, $study_year);
+    $logger->finish_run($run_id, empty($result['success']) ? 'completed_with_errors' : 'completed', empty($result['message']) ? '' : $result['message']);
+    $result['run_id'] = $run_id;
+
+    return $result;
 }
 
 function olama_oracle_sync_bootstrap() {

@@ -2,193 +2,198 @@
     'use strict';
 
     var state = {
-        mode: 'students',
         running: false,
-        paused: false,
-        nextOffset: 0
+        nextOffset: 0,
+        limit: Math.max(1, Math.min(100, parseInt(OlamaOracleFullSync.batchSize, 10) || 25))
     };
 
-    $('[data-olama-full-sync-start="students"]').text('تشغيل مزامنة الطلاب كاملة');
-    $('[data-olama-full-sync-start="student_years"]').text('تشغيل مزامنة سنوات الطلاب كاملة');
-    $('[data-olama-full-sync-pause]').text('إيقاف مؤقت');
-    $('[data-olama-full-sync-resume]').text('استكمال');
-    $('[data-olama-full-sync-reset]').text('إعادة ضبط التقدم');
-    $('.olama-oracle-page-subtitle').first().text('تشغيل ومتابعة مزامنة العائلات والطلاب وسنوات الطلاب من Oracle ERP');
-    $('.olama-oracle-full-sync-heading .olama-oracle-section-title').text('مزامنة كاملة تلقائية');
-    $('.olama-oracle-full-sync-heading .olama-oracle-section-note').text('تشغيل مزامنة كاملة على دفعات آمنة بدون الحاجة إلى إدخال offset يدوياً.');
-    $('#olama-oracle-full-sync')
-        .next('.olama-oracle-section')
-        .find('.olama-oracle-section-header > h2')
-        .first()
-        .addClass('olama-oracle-section-title')
-        .text('مزامنة متقدمة بالدفعات');
-    $('#olama-oracle-full-sync')
-        .next('.olama-oracle-section')
-        .find('.olama-oracle-section-note')
-        .first()
-        .text('أدوات يدوية للتشخيص أو تشغيل دفعة محددة فقط.');
+    var $allButton = $('[data-olama-sync-all]');
+    var $oneButton = $('[data-olama-sync-one]');
+    var $message = $('[data-olama-full-sync-message]');
+    var $title = $('[data-olama-progress-title]');
+    var $percent = $('[data-olama-progress-percent]');
+    var $bar = $('[data-olama-full-sync-bar]');
+    var $links = $('[data-olama-full-sync-links]');
 
     function field(name) {
         return $('[data-olama-full-sync-field="' + name + '"]');
     }
 
-    function studyYear() {
-        return String($('[data-olama-full-sync-study-year]').val() || '').trim();
+    function allStudyYear() {
+        return String($('[data-olama-sync-year]').val() || '').trim();
     }
 
-    function limit() {
-        var value = parseInt($('[data-olama-full-sync-limit]').val(), 10);
-        if (!value || value < 1) {
-            value = 1;
-        }
-        if (value > 100) {
-            value = 100;
-        }
-        $('[data-olama-full-sync-limit]').val(value);
-        return value;
+    function singleStudyYear() {
+        return String($('[data-olama-single-year]').val() || '').trim();
     }
 
-    function startOffset() {
-        var value = parseInt($('[data-olama-full-sync-offset]').val(), 10);
-        if (!value || value < 0) {
-            value = 0;
-        }
-        $('[data-olama-full-sync-offset]').val(value);
-        return value;
+    function familyId() {
+        return String($('[data-olama-family-id]').val() || '').trim();
     }
 
-    function actionForMode(mode) {
-        return mode === 'student_years'
-            ? 'olama_oracle_run_student_years_full_sync_batch'
-            : 'olama_oracle_run_students_full_sync_batch';
+    function request(action, data) {
+        return $.post(OlamaOracleFullSync.ajaxUrl, $.extend({
+            action: action,
+            nonce: OlamaOracleFullSync.nonce
+        }, data || {}));
+    }
+
+    function setRunning(running) {
+        state.running = running;
+        $allButton.prop('disabled', running);
+        $oneButton.prop('disabled', running);
+        $('.olama-oracle-sync-choice').toggleClass('is-busy', running);
+    }
+
+    function setPhase(phase) {
+        $('.olama-oracle-phase-list [data-phase]').removeClass('is-active is-complete');
+        if (phase === 'families') {
+            $('[data-phase="families"]').addClass('is-active');
+        } else if (phase === 'students') {
+            $('[data-phase="families"]').addClass('is-complete');
+            $('[data-phase="students"]').addClass('is-active');
+        } else if (phase === 'completed') {
+            $('[data-phase="families"], [data-phase="students"], [data-phase="completed"]').addClass('is-complete');
+        }
     }
 
     function updateProgress(data) {
-        var percent = data.progress_percentage || 0;
-        field('status').text(data.status || '-');
-        field('study_year').text(data.study_year || '-');
-        field('last_offset').text(data.offset || 0);
-        field('total_families').text(data.total_families || 0);
-        field('families_processed').text(data.families_processed || 0);
-        field('total_students_inserted').text(data.students_inserted || 0);
-        field('total_students_updated').text(data.students_updated || 0);
-        field('total_student_year_rows_inserted').text(data.student_year_rows_inserted || 0);
-        field('total_student_year_rows_updated').text(data.student_year_rows_updated || 0);
-        field('total_errors').text(data.errors || 0);
-        field('progress_percentage').text(percent + '%');
-        field('last_family_id').text(data.last_family_id || '-');
-        $('[data-olama-full-sync-bar]').css('width', percent + '%');
-        $('[data-olama-full-sync-message]').text(data.message || '');
-        $('[data-olama-full-sync-links]').toggle(!!data.done);
+        data = data || {};
+        var progress = Math.max(0, Math.min(100, parseFloat(data.progress_percentage) || 0));
+        var studentsChanged = (parseInt(data.students_inserted, 10) || 0) + (parseInt(data.students_updated, 10) || 0);
+        var yearsChanged = (parseInt(data.student_year_rows_inserted, 10) || 0) + (parseInt(data.student_year_rows_updated, 10) || 0);
+        var unchanged = (parseInt(data.families_skipped, 10) || 0) + (parseInt(data.students_skipped, 10) || 0) + (parseInt(data.student_year_rows_skipped, 10) || 0);
+
+        if (data.phase === 'families' && progress === 0) {
+            progress = 4;
+        }
+        if (data.done) {
+            progress = 100;
+        }
+
+        $percent.text(Math.round(progress) + '%');
+        $bar.css('width', progress + '%');
+        $message.text(data.message || 'جاري تنفيذ المزامنة...');
+        field('families_processed').text(parseInt(data.families_processed, 10) || 0);
+        field('students_changed').text(studentsChanged);
+        field('student_years_changed').text(yearsChanged);
+        field('unchanged').text(unchanged);
+        field('errors').text(parseInt(data.errors, 10) || 0);
+        $('[data-olama-last-family]').text(data.last_family_id ? 'آخر عائلة تمت معالجتها: ' + data.last_family_id : '');
+        setPhase(data.phase || 'students');
+
+        if (data.status === 'failed') {
+            $title.text('تعذر إكمال المزامنة');
+            $('[data-olama-progress-card]').addClass('has-error').removeClass('is-complete');
+        } else if (data.done) {
+            $title.text('اكتملت المزامنة');
+            $('[data-olama-progress-card]').addClass('is-complete').removeClass('has-error');
+        } else if (data.phase === 'families') {
+            $title.text('مزامنة العائلات');
+        } else {
+            $title.text('مزامنة الطلاب وبيانات السنة');
+        }
+
+        $links.prop('hidden', !data.done);
         if (typeof data.next_offset !== 'undefined') {
             state.nextOffset = parseInt(data.next_offset, 10) || 0;
-            $('[data-olama-full-sync-offset]').val(state.nextOffset);
         }
     }
 
-    function setStatus(status) {
-        return $.post(OlamaOracleFullSync.ajaxUrl, {
-            action: 'olama_oracle_update_full_sync_progress',
-            nonce: OlamaOracleFullSync.nonce,
-            mode: state.mode,
-            study_year: studyYear(),
-            status: status
+    function showFailure(response, fallback) {
+        var data = response && response.data ? response.data : {};
+        data.status = 'failed';
+        data.message = data.message || fallback;
+        updateProgress(data);
+        setRunning(false);
+    }
+
+    function runAllBatch(studyYear, offset) {
+        request('olama_oracle_run_students_full_sync_batch', {
+            study_year: studyYear,
+            limit: state.limit,
+            offset: offset,
+            mode: 'students'
+        }).done(function(response) {
+            if (!response || !response.success) {
+                showFailure(response, 'تعذر إكمال دفعة المزامنة.');
+                return;
+            }
+
+            updateProgress(response.data);
+            if (response.data.done) {
+                setRunning(false);
+                return;
+            }
+            window.setTimeout(function() {
+                runAllBatch(studyYear, response.data.next_offset);
+            }, 250);
+        }).fail(function() {
+            showFailure(null, 'تعذر الاتصال بخادم WordPress أثناء المزامنة.');
         });
     }
 
-    function runBatch(offset) {
-        if (!state.running || state.paused) {
+    $allButton.on('click', function() {
+        var studyYear = allStudyYear();
+        if (!studyYear) {
+            $message.text('أدخل السنة الدراسية أولاً.');
+            $('[data-olama-sync-year]').trigger('focus');
             return;
         }
 
-        $('[data-olama-full-sync-message]').text('Running batch at offset ' + offset + '...');
-        $.post(OlamaOracleFullSync.ajaxUrl, {
-            action: actionForMode(state.mode),
-            nonce: OlamaOracleFullSync.nonce,
-            study_year: studyYear(),
-            limit: limit(),
-            offset: offset,
-            mode: state.mode
-        }).done(function(response) {
-            var data = response && response.data ? response.data : {};
+        setRunning(true);
+        state.nextOffset = 0;
+        $links.prop('hidden', true);
+        $('[data-olama-progress-card]').removeClass('has-error is-complete');
+        updateProgress({phase: 'families', status: 'running', message: 'جاري تحديث دليل العائلات من Oracle...'});
+
+        request('olama_oracle_start_all_sync', {study_year: studyYear}).done(function(response) {
             if (!response || !response.success) {
-                state.running = false;
-                state.paused = true;
-                updateProgress(data);
-                $('[data-olama-full-sync-message]').text(data.message || 'Sync failed.');
+                showFailure(response, 'تعذر بدء مزامنة العائلات.');
                 return;
             }
-
-            updateProgress(data);
-            if (data.done) {
-                state.running = false;
-                state.paused = false;
+            updateProgress(response.data);
+            if (response.data.done) {
+                setRunning(false);
                 return;
             }
-
-            window.setTimeout(function() {
-                runBatch(data.next_offset);
-            }, 350);
-        }).fail(function(xhr) {
-            state.running = false;
-            state.paused = true;
-            $('[data-olama-full-sync-message]').text('Request failed: HTTP ' + xhr.status + '.');
-        });
-    }
-
-    $('[data-olama-full-sync-start]').on('click', function() {
-        state.mode = $(this).data('olama-full-sync-start');
-        state.running = true;
-        state.paused = false;
-        $('[data-olama-full-sync-links]').hide();
-        setStatus('running').always(function() {
-            runBatch(startOffset());
+            runAllBatch(studyYear, response.data.next_offset || 0);
+        }).fail(function() {
+            showFailure(null, 'تعذر الاتصال بخادم WordPress لبدء المزامنة.');
         });
     });
 
-    $('[data-olama-full-sync-pause]').on('click', function() {
-        state.paused = true;
-        state.running = false;
-        setStatus('paused');
-        $('[data-olama-full-sync-message]').text('Paused. Click resume to continue from the stored next offset.');
-    });
+    $oneButton.on('click', function() {
+        var id = familyId();
+        var studyYear = singleStudyYear();
+        if (!id) {
+            $message.text('أدخل رقم العائلة في Oracle أولاً.');
+            $('[data-olama-family-id]').trigger('focus');
+            return;
+        }
+        if (!studyYear) {
+            $message.text('أدخل السنة الدراسية أولاً.');
+            $('[data-olama-single-year]').trigger('focus');
+            return;
+        }
 
-    $('[data-olama-full-sync-resume]').on('click', function() {
-        state.running = true;
-        state.paused = false;
-        setStatus('running').always(function() {
-            runBatch(startOffset());
-        });
-    });
+        setRunning(true);
+        $links.prop('hidden', true);
+        $('[data-olama-progress-card]').removeClass('has-error is-complete');
+        updateProgress({phase: 'families', status: 'running', message: 'جاري مزامنة العائلة رقم ' + id + '...'});
 
-    $('[data-olama-full-sync-reset]').on('click', function() {
-        state.running = false;
-        state.paused = true;
-        $.post(OlamaOracleFullSync.ajaxUrl, {
-            action: 'olama_oracle_reset_full_sync_progress',
-            nonce: OlamaOracleFullSync.nonce,
-            mode: state.mode,
-            study_year: studyYear()
+        request('olama_oracle_sync_one_family', {
+            family_id: id,
+            study_year: studyYear
         }).done(function(response) {
-            var data = response && response.data ? response.data : {};
-            $('[data-olama-full-sync-offset]').val(0);
-            $('[data-olama-full-sync-bar]').css('width', '0');
-            updateProgress({
-                status: data.status || 'paused',
-                study_year: data.study_year || studyYear(),
-                offset: 0,
-                next_offset: 0,
-                total_families: data.total_families || 0,
-                families_processed: 0,
-                students_inserted: 0,
-                students_updated: 0,
-                student_year_rows_inserted: 0,
-                student_year_rows_updated: 0,
-                errors: 0,
-                progress_percentage: 0,
-                last_family_id: '',
-                message: 'Progress reset.'
-            });
+            if (!response || !response.success) {
+                showFailure(response, 'تعذر مزامنة العائلة المحددة.');
+                return;
+            }
+            updateProgress(response.data);
+            setRunning(false);
+        }).fail(function() {
+            showFailure(null, 'تعذر الاتصال بخادم WordPress أثناء مزامنة العائلة.');
         });
     });
 })(jQuery);

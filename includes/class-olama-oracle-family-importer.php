@@ -78,7 +78,8 @@ class Olama_Oracle_Family_Importer {
     private function import_record(array $family, $run_id, $endpoint) {
         $family_id = isset($family['family_id']) ? $family['family_id'] : (isset($family['oracle_family_id']) ? $family['oracle_family_id'] : '');
         try {
-            $data = array(
+            $data = array_merge($family, array(
+                '_partial' => strpos($endpoint, '/card') === false,
                 'oracle_family_id' => $family_id,
                 'sponsor_full_name' => isset($family['sponsor_full_name']) ? $family['sponsor_full_name'] : '',
                 'father_name' => isset($family['father_name']) ? $family['father_name'] : '',
@@ -95,7 +96,7 @@ class Olama_Oracle_Family_Importer {
                 'family_status_name' => $this->first($family, array('family_status_name', 'status_name')),
                 'students_count' => $this->first($family, array('students_count', 'student_count', 'children_count')),
                 'raw' => $family,
-            );
+            ));
             $result = olama_core()->families()->upsert_from_source($data);
             $this->logger->store_payload('family', $family_id, null, $endpoint, $family);
             $this->logger->log_item($run_id, 'family', $result['uid'], $family_id, null, $result['operation'], 'success', ucfirst($result['operation']));

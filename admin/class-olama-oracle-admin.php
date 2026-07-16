@@ -17,19 +17,20 @@ class Olama_Oracle_Admin {
         add_action('admin_menu', array($this, 'register_menu'));
         add_action('admin_init', array($this, 'handle_actions'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_assets'));
+        add_action('wp_ajax_olama_oracle_start_all_sync', array($this, 'ajax_start_all_sync'));
+        add_action('wp_ajax_olama_oracle_sync_one_family', array($this, 'ajax_sync_one_family'));
         add_action('wp_ajax_olama_oracle_run_students_full_sync_batch', array($this, 'ajax_run_students_full_sync_batch'));
         add_action('wp_ajax_olama_oracle_run_student_years_full_sync_batch', array($this, 'ajax_run_student_years_full_sync_batch'));
         add_action('wp_ajax_olama_oracle_update_full_sync_progress', array($this, 'ajax_update_full_sync_progress'));
         add_action('wp_ajax_olama_oracle_reset_full_sync_progress', array($this, 'ajax_reset_full_sync_progress'));
+        add_action('wp_ajax_olama_oracle_test_api_endpoint', array($this, 'ajax_test_api_endpoint'));
     }
 
     public function register_menu() {
         add_menu_page('Olama Oracle Sync', 'Olama Oracle Sync', 'manage_options', 'olama-oracle-sync', array($this, 'dashboard'), 'dashicons-update-alt', 57);
         add_submenu_page('olama-oracle-sync', 'Dashboard', 'Dashboard', 'manage_options', 'olama-oracle-sync', array($this, 'dashboard'));
         add_submenu_page('olama-oracle-sync', 'Settings', 'Settings', 'manage_options', 'olama-oracle-sync-settings', array($this, 'settings'));
-        add_submenu_page('olama-oracle-sync', 'Manual Sync', 'Manual Sync', 'manage_options', 'olama-oracle-sync-manual', array($this, 'manual_sync'));
-        add_submenu_page('olama-oracle-sync', 'Sync Runs', 'Sync Runs', 'manage_options', 'olama-oracle-sync-runs', array($this, 'sync_runs'));
-        add_submenu_page('olama-oracle-sync', 'Validation', 'Validation', 'manage_options', 'olama-oracle-sync-validation', array($this, 'validation'));
+        add_submenu_page('olama-oracle-sync', 'API Map', 'API Map', 'manage_options', 'olama-oracle-sync-api-map', array($this, 'api_map'));
     }
 
     public function handle_actions() {
@@ -103,7 +104,7 @@ class Olama_Oracle_Admin {
         }
 
         $redirect = add_query_arg(array(
-            'page' => isset($_GET['page']) ? sanitize_text_field($_GET['page']) : 'olama-oracle-sync-manual',
+            'page' => isset($_GET['page']) ? sanitize_text_field($_GET['page']) : 'olama-oracle-sync',
             'olama_message' => $message,
             'olama_success' => $success ? '1' : '0',
         ), admin_url('admin.php'));
@@ -113,6 +114,18 @@ class Olama_Oracle_Admin {
 
     public function dashboard() {
         global $wpdb;
+
+        $study_year = $this->get_default_study_year();
+        echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page olama-oracle-sync-page">';
+        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">Olama Oracle Sync</h1><p class="olama-oracle-page-subtitle">مزامنة بيانات العائلات والطلاب من Oracle ERP ومتابعة جودة البيانات من مكان واحد.</p></div>';
+        echo '<div class="olama-oracle-header-actions"><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-settings')) . '">الإعدادات</a><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="#olama-oracle-recent-runs">آخر العمليات</a></div></div>';
+        $this->notice();
+        echo '<div class="olama-oracle-stack">';
+        $this->simple_sync_panel($study_year);
+        $this->dashboard_validation_card();
+        $this->dashboard_recent_runs();
+        echo '</div></div></div>';
+        return;
 
         $runs = $wpdb->prefix . 'olama_oracle_sync_runs';
         $last = $wpdb->get_row("SELECT * FROM `" . esc_sql($runs) . "` ORDER BY id DESC LIMIT 1", ARRAY_A);
@@ -150,6 +163,15 @@ class Olama_Oracle_Admin {
 
     public function manual_sync() {
         $study_year = $this->get_default_study_year();
+        echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page olama-oracle-sync-page">';
+        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">مزامنة Oracle</h1><p class="olama-oracle-page-subtitle">تحديث العائلات والطلاب وبيانات السنة الدراسية من Oracle ERP إلى Olama Core.</p></div>';
+        echo '<div class="olama-oracle-header-actions"><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-settings')) . '">الإعدادات</a><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-runs')) . '">سجل المزامنة</a></div></div>';
+        $this->notice();
+        echo '<div class="olama-oracle-stack">';
+        $this->simple_sync_panel($study_year);
+        echo '</div></div></div>';
+        return;
+
         echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page">';
         echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">Manual Oracle Sync</h1><p class="olama-oracle-page-subtitle">تشغيل ومتابعة مزامنة العائلات والطلاب وسنوات الطلاب من Oracle ERP</p></div></div>';
         $this->notice();
@@ -178,10 +200,25 @@ class Olama_Oracle_Admin {
             'olama-oracle-admin',
             OLAMA_ORACLE_SYNC_URL . 'admin/css/olama-oracle-admin.css',
             array(),
-            OLAMA_ORACLE_SYNC_VERSION
+            filemtime(OLAMA_ORACLE_SYNC_PATH . 'admin/css/olama-oracle-admin.css')
         );
 
-        if ('olama-oracle-sync_page_olama-oracle-sync-manual' !== $hook) {
+        if ('olama-oracle-sync_page_olama-oracle-sync-api-map' === $hook) {
+            wp_enqueue_script(
+                'olama-oracle-api-map',
+                OLAMA_ORACLE_SYNC_URL . 'assets/js/api-map.js',
+                array(),
+                filemtime(OLAMA_ORACLE_SYNC_PATH . 'assets/js/api-map.js'),
+                true
+            );
+            wp_localize_script('olama-oracle-api-map', 'OlamaOracleApiMap', array(
+                'ajaxUrl' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('olama_oracle_api_map'),
+            ));
+            return;
+        }
+
+        if (!in_array($hook, array('toplevel_page_olama-oracle-sync', 'olama-oracle-sync_page_olama-oracle-sync-manual'), true)) {
             return;
         }
 
@@ -189,12 +226,13 @@ class Olama_Oracle_Admin {
             'olama-oracle-full-sync',
             OLAMA_ORACLE_SYNC_URL . 'assets/js/full-sync.js',
             array('jquery'),
-            OLAMA_ORACLE_SYNC_VERSION,
+            filemtime(OLAMA_ORACLE_SYNC_PATH . 'assets/js/full-sync.js'),
             true
         );
         wp_localize_script('olama-oracle-full-sync', 'OlamaOracleFullSync', array(
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('olama_oracle_full_sync'),
+            'batchSize' => max(1, min(100, absint(Olama_Oracle_Settings::get('batch_size')))),
             'dashboardUrl' => admin_url('admin.php?page=olama-core'),
             'studentsUrl' => admin_url('admin.php?page=olama-core-directory&tab=students'),
             'studentYearsUrl' => admin_url('admin.php?page=olama-core-directory&tab=student_years'),
@@ -203,6 +241,101 @@ class Olama_Oracle_Admin {
 
     public function ajax_run_students_full_sync_batch() {
         $this->ajax_run_full_sync_batch('students');
+    }
+
+    public function ajax_start_all_sync() {
+        $this->verify_full_sync_ajax();
+        $study_year = $this->sanitize_study_year_from_request();
+        if ('' === $study_year) {
+            wp_send_json_error(array('message' => 'السنة الدراسية مطلوبة.'), 400);
+        }
+
+        $mode = 'students';
+        $progress = $this->default_full_sync_progress($mode, $study_year);
+        $progress['status'] = 'running';
+        $progress['phase'] = 'families';
+        $progress['started_at'] = current_time('mysql');
+        $progress['last_message'] = 'جاري تحديث دليل العائلات من Oracle...';
+        $this->save_full_sync_progress($mode, $study_year, $progress);
+
+        $result = (new Olama_Oracle_Family_Importer($this->client, $this->logger))->import_all();
+        if (empty($result['success'])) {
+            $progress['status'] = 'failed';
+            $progress['last_error_message'] = isset($result['message']) ? sanitize_text_field($result['message']) : 'تعذر تحديث العائلات.';
+            $progress['last_message'] = $progress['last_error_message'];
+            $progress['total_errors'] = 1;
+            $this->save_full_sync_progress($mode, $study_year, $progress);
+            wp_send_json_error($this->full_sync_response_from_progress($progress, false, $progress['last_message']));
+        }
+
+        $family_counts = $this->get_run_counts(isset($result['run_id']) ? absint($result['run_id']) : 0);
+        $progress['families_created'] = $family_counts['created'];
+        $progress['families_updated'] = $family_counts['updated'];
+        $progress['families_skipped'] = $family_counts['skipped'];
+        $progress['total_errors'] = $family_counts['failed'];
+        $progress['total_families'] = $this->count_imported_families();
+        $progress['phase'] = 'students';
+        $progress['last_message'] = 'تم تحديث العائلات. جاري مزامنة الطلاب وبيانات السنة الدراسية...';
+        if (0 === $progress['total_families']) {
+            $progress['status'] = 'completed';
+            $progress['phase'] = 'completed';
+            $progress['completed_at'] = current_time('mysql');
+        }
+        $this->save_full_sync_progress($mode, $study_year, $progress);
+
+        wp_send_json_success($this->full_sync_response_from_progress($progress, 0 === $progress['total_families'], $progress['last_message']));
+    }
+
+    public function ajax_sync_one_family() {
+        $this->verify_full_sync_ajax();
+        $study_year = $this->sanitize_study_year_from_request();
+        $family_id = isset($_POST['family_id']) ? sanitize_text_field(wp_unslash($_POST['family_id'])) : '';
+        if ('' === $family_id || '' === $study_year) {
+            wp_send_json_error(array('message' => 'رقم العائلة والسنة الدراسية مطلوبان.'), 400);
+        }
+
+        $progress = $this->default_full_sync_progress('students', $study_year);
+        $progress['status'] = 'running';
+        $progress['phase'] = 'families';
+        $progress['total_families'] = 1;
+        $progress['last_family_id'] = $family_id;
+        $progress['started_at'] = current_time('mysql');
+
+        $family_result = (new Olama_Oracle_Family_Importer($this->client, $this->logger))->import_one($family_id);
+        if (empty($family_result['success'])) {
+            $progress['status'] = 'failed';
+            $progress['last_message'] = isset($family_result['message']) ? sanitize_text_field($family_result['message']) : 'تعذر مزامنة العائلة.';
+            $progress['total_errors'] = 1;
+            wp_send_json_error($this->full_sync_response_from_progress($progress, false, $progress['last_message']));
+        }
+
+        $family_counts = $this->get_run_counts(isset($family_result['run_id']) ? absint($family_result['run_id']) : 0);
+        $student_result = (new Olama_Oracle_Student_Importer($this->client, $this->logger))->import_family($family_id, null, $study_year);
+        $summary = isset($student_result['summary']) && is_array($student_result['summary']) ? $student_result['summary'] : array();
+
+        $progress['families_processed'] = 1;
+        $progress['families_created'] = $family_counts['created'];
+        $progress['families_updated'] = $family_counts['updated'];
+        $progress['families_skipped'] = $family_counts['skipped'];
+        $progress['total_students_inserted'] = (int) ($summary['students_created'] ?? 0);
+        $progress['total_students_updated'] = (int) ($summary['students_updated'] ?? 0);
+        $progress['total_students_skipped'] = (int) ($summary['students_skipped'] ?? 0);
+        $progress['total_student_year_rows_inserted'] = (int) ($summary['student_years_created'] ?? 0);
+        $progress['total_student_year_rows_updated'] = (int) ($summary['student_years_updated'] ?? 0);
+        $progress['total_student_year_rows_skipped'] = (int) ($summary['student_years_skipped'] ?? 0);
+        $progress['total_errors'] = $family_counts['failed'] + (int) ($summary['failed'] ?? 0);
+        $progress['status'] = !empty($student_result['success']) ? 'completed' : 'failed';
+        $progress['phase'] = $progress['status'];
+        $progress['next_offset'] = 1;
+        $progress['completed_at'] = current_time('mysql');
+        $progress['last_message'] = !empty($student_result['success'])
+            ? 'اكتملت مزامنة العائلة رقم ' . $family_id . ' بنجاح.'
+            : (isset($student_result['message']) ? sanitize_text_field($student_result['message']) : 'تعذر مزامنة طلاب العائلة.');
+
+        if ('failed' === $progress['status']) {
+            wp_send_json_error($this->full_sync_response_from_progress($progress, false, $progress['last_message']));
+        }
+        wp_send_json_success($this->full_sync_response_from_progress($progress, true, $progress['last_message']));
     }
 
     public function ajax_run_student_years_full_sync_batch() {
@@ -230,6 +363,175 @@ class Olama_Oracle_Admin {
         $study_year = $this->sanitize_study_year_from_request();
         delete_option($this->progress_option_name($mode, $study_year));
         wp_send_json_success($this->default_full_sync_progress($mode, $study_year));
+    }
+
+    public function api_map() {
+        $catalog = $this->api_catalog();
+        $groups = array();
+        foreach ($catalog as $endpoint) {
+            $groups[$endpoint['group']] = $endpoint['group_label'];
+        }
+        $default_year = $this->get_default_study_year();
+        if ('' === $default_year) {
+            $default_year = '2026-2027';
+        }
+
+        echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page olama-api-map-page">';
+        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">API Map</h1><p class="olama-oracle-page-subtitle">دليل واختبار واجهات Oracle API Bridge وربطها الحالي أو المستقبلي مع Olama Core.</p></div>';
+        echo '<div class="olama-oracle-header-actions"><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-settings')) . '">Settings</a></div></div>';
+        echo '<section class="olama-oracle-section olama-api-map-intro"><div><strong>Read-only diagnostics</strong><p>Tests validate connectivity and response contracts only. They never synchronize or modify Olama Core data.</p></div><span class="dashicons dashicons-shield-alt"></span></section>';
+        echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><div><h2 class="olama-oracle-section-title">Test parameters</h2><p class="olama-oracle-section-note">Sample identifiers are used only for endpoints that require them.</p></div></div>';
+        echo '<div class="olama-api-map-controls">';
+        echo '<label><span>Family number</span><input id="olama-api-family-id" type="number" min="1" value="1161"></label>';
+        echo '<label><span>Student number</span><input id="olama-api-student-id" type="number" min="1" value="1"></label>';
+        echo '<label><span>Study year</span><input id="olama-api-study-year" type="text" value="' . esc_attr($default_year) . '"></label>';
+        echo '<label><span>Search text</span><input id="olama-api-search" type="text" value="1161"></label>';
+        echo '<label><span>Group</span><select id="olama-api-group-filter"><option value="">All groups</option>';
+        foreach ($groups as $key => $label) {
+            echo '<option value="' . esc_attr($key) . '">' . esc_html($label) . '</option>';
+        }
+        echo '</select></label></div>';
+        echo '<div class="olama-api-map-actions"><button type="button" class="button olama-oracle-btn olama-oracle-btn-primary" id="olama-api-test-selected">Test selected</button><button type="button" class="button olama-oracle-btn olama-oracle-btn-secondary" id="olama-api-test-all">Test all APIs</button><button type="button" class="button olama-oracle-btn olama-oracle-btn-ghost" id="olama-api-clear">Clear results</button><span id="olama-api-map-progress" aria-live="polite"></span></div></section>';
+        echo '<div class="olama-api-map-summary"><div><span>Catalogued APIs</span><strong>' . esc_html(count($catalog)) . '</strong></div><div><span>Tested</span><strong id="olama-api-tested-count">0</strong></div><div class="is-pass"><span>Passed</span><strong id="olama-api-passed-count">0</strong></div><div class="is-fail"><span>Failed</span><strong id="olama-api-failed-count">0</strong></div></div>';
+        echo '<section class="olama-oracle-section"><div class="olama-api-map-table-wrap"><table class="olama-api-map-table"><thead><tr><th><input type="checkbox" id="olama-api-select-all" aria-label="Select all APIs"></th><th>Group</th><th>API endpoint</th><th>Purpose</th><th>Core mapping</th><th>Integration</th><th>Test result</th></tr></thead><tbody>';
+        foreach ($catalog as $id => $endpoint) {
+            echo '<tr data-api-id="' . esc_attr($id) . '" data-api-group="' . esc_attr($endpoint['group']) . '">';
+            echo '<td><input type="checkbox" class="olama-api-select" value="' . esc_attr($id) . '"></td>';
+            echo '<td><span class="olama-api-group">' . esc_html($endpoint['group_label']) . '</span></td>';
+            echo '<td><strong>' . esc_html($endpoint['label']) . '</strong><code dir="ltr">GET ' . esc_html($endpoint['path']) . '</code></td>';
+            echo '<td>' . esc_html($endpoint['purpose']) . '</td>';
+            echo '<td>' . esc_html($endpoint['core_target']) . '</td>';
+            echo '<td><span class="olama-api-integration is-' . esc_attr($endpoint['integration']) . '">' . esc_html($endpoint['integration_label']) . '</span></td>';
+            echo '<td class="olama-api-result"><span class="olama-api-result-status is-idle">Not tested</span><small></small></td></tr>';
+        }
+        echo '</tbody></table></div></section></div></div>';
+    }
+
+    public function ajax_test_api_endpoint() {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => 'You do not have permission to test Oracle APIs.'), 403);
+        }
+        if (!check_ajax_referer('olama_oracle_api_map', 'nonce', false)) {
+            wp_send_json_error(array('message' => 'Security check failed. Refresh the page and try again.'), 403);
+        }
+        $id = isset($_POST['endpoint_id']) ? sanitize_key(wp_unslash($_POST['endpoint_id'])) : '';
+        $catalog = $this->api_catalog();
+        if (!isset($catalog[$id])) {
+            wp_send_json_error(array('message' => 'Unknown API endpoint.'), 400);
+        }
+        $family_id = isset($_POST['family_id']) ? absint($_POST['family_id']) : 0;
+        $student_id = isset($_POST['student_id']) ? absint($_POST['student_id']) : 0;
+        $study_year = isset($_POST['study_year']) ? sanitize_text_field(wp_unslash($_POST['study_year'])) : '';
+        $search = isset($_POST['search']) ? sanitize_text_field(wp_unslash($_POST['search'])) : '';
+        if (!$family_id || !$student_id || '' === $study_year) {
+            wp_send_json_error(array('message' => 'Family number, student number, and study year are required.'), 400);
+        }
+
+        $endpoint = $catalog[$id];
+        $path = strtr($endpoint['path'], array('{family_id}' => rawurlencode((string) $family_id), '{student_id}' => rawurlencode((string) $student_id), '{student_key}' => rawurlencode($family_id . ':' . $student_id)));
+        $params = array();
+        foreach ($endpoint['params'] as $key => $source) {
+            if ('study_year' === $source) {
+                $params[$key] = $study_year;
+            } elseif ('family_id' === $source) {
+                $params[$key] = $family_id;
+            } elseif ('student_id' === $source) {
+                $params[$key] = $student_id;
+            } elseif ('search' === $source) {
+                $params[$key] = '' !== $search ? $search : (string) $family_id;
+            } else {
+                $params[$key] = $source;
+            }
+        }
+
+        $started = microtime(true);
+        $result = $this->client->get($path, $params);
+        $elapsed = (int) round((microtime(true) - $started) * 1000);
+        $data = isset($result['data']) && is_array($result['data']) ? $result['data'] : array();
+        $missing = array();
+        foreach ($endpoint['expected'] as $field) {
+            if (!array_key_exists($field, $data)) {
+                $missing[] = $field;
+            }
+        }
+        $contract_ok = !empty($result['success']) && !$missing;
+        $response_status = isset($data['status']) ? sanitize_text_field((string) $data['status']) : '';
+        $api_ok = !empty($result['success']) && !in_array($response_status, array('error', 'not_found'), true);
+
+        wp_send_json_success(array(
+            'endpoint_id' => $id,
+            'ok' => $api_ok && $contract_ok,
+            'http_status' => isset($result['status_code']) ? (int) $result['status_code'] : 0,
+            'latency_ms' => $elapsed,
+            'valid_json' => !empty($result['success']),
+            'contract_ok' => $contract_ok,
+            'missing_fields' => $missing,
+            'response_status' => $response_status,
+            'record_count' => $this->api_response_count($data),
+            'response_keys' => array_slice(array_keys($data), 0, 18),
+            'message' => !empty($result['success']) ? 'Valid JSON response received.' : sanitize_text_field((string) ($result['message'] ?? 'Request failed.')),
+            'tested_at' => current_time('mysql'),
+        ));
+    }
+
+    private function api_response_count(array $data) {
+        foreach (array('count', 'total') as $field) {
+            if (isset($data[$field]) && is_numeric($data[$field])) {
+                return (int) $data[$field];
+            }
+        }
+        foreach (array('families', 'students', 'recipients', 'transportation', 'items', 'transactions', 'dues', 'receipts', 'payments', 'academic_history') as $field) {
+            if (isset($data[$field]) && is_array($data[$field])) {
+                return count($data[$field]);
+            }
+        }
+        return null;
+    }
+
+    private function api_endpoint($group, $group_label, $label, $path, $purpose, $core_target, $integration, $integration_label, $params = array(), $expected = array('status')) {
+        return compact('group', 'group_label', 'label', 'path', 'purpose', 'core_target', 'integration', 'integration_label', 'params', 'expected');
+    }
+
+    private function api_catalog() {
+        $e = array();
+        $e['root'] = $this->api_endpoint('connection', 'Connection', 'Bridge index', '/', 'Bridge identity and endpoint index.', 'Diagnostics only', 'diagnostic', 'Diagnostic', array(), array('status', 'endpoints'));
+        $e['health'] = $this->api_endpoint('connection', 'Connection', 'Oracle health', '/api/health', 'Bridge and Oracle connectivity.', 'Sync connection status', 'integrated', 'Integrated', array(), array('status', 'oracle'));
+
+        $e['families'] = $this->api_endpoint('identity', 'Families & students', 'Families list', '/api/families', 'Active family directory.', 'Families', 'integrated', 'Integrated', array('limit' => '5', 'offset' => '0'), array('status', 'families'));
+        $e['family'] = $this->api_endpoint('identity', 'Families & students', 'Family details', '/api/families/{family_id}', 'One family with students.', 'Family lookup', 'integrated', 'Integrated', array(), array('status', 'family', 'students'));
+        $e['family_students'] = $this->api_endpoint('identity', 'Families & students', 'Family students', '/api/families/{family_id}/students', 'Students belonging to one family.', 'Students and academic years', 'integrated', 'Integrated', array('study_year' => 'study_year'), array('status', 'students'));
+        $e['students'] = $this->api_endpoint('identity', 'Families & students', 'Students list', '/api/students', 'Active student directory.', 'Students and academic years', 'integrated', 'Integrated', array('limit' => '5', 'offset' => '0', 'study_year' => 'study_year'), array('status', 'students'));
+        $e['student'] = $this->api_endpoint('identity', 'Families & students', 'Student details', '/api/students/{family_id}/{student_id}', 'One current student record.', 'Student lookup', 'planned', 'Available later', array(), array('status', 'student'));
+        $e['student_search'] = $this->api_endpoint('identity', 'Families & students', 'Student search', '/api/students/search', 'Search students by name or identifier.', 'Search helper', 'integrated', 'Integrated', array('q' => 'search'), array('status', 'students'));
+
+        $e['family_card'] = $this->api_endpoint('cards', 'Detailed cards', 'Family card', '/api/families/{family_id}/card', 'Detailed family, children, and academics.', 'Families, students, academic years', 'integrated', 'Integrated', array('study_year' => 'study_year'), array('status', 'family', 'students'));
+        $e['student_card'] = $this->api_endpoint('cards', 'Detailed cards', 'Student card', '/api/families/{family_id}/students/{student_id}/card', 'Detailed student and academic history.', 'Student knowledge projection', 'planned', 'Available later', array('study_year' => 'study_year'), array('status', 'student', 'academic_history'));
+
+        $e['transportation'] = $this->api_endpoint('transportation', 'Transportation', 'Family transportation', '/api/families/{family_id}/transportation', 'Transportation assignments for a family.', 'Student transportation', 'integrated', 'Integrated', array('study_year' => 'study_year'), array('status', 'transportation'));
+        $e['transport_recipients'] = $this->api_endpoint('transportation', 'Transportation', 'Messaging transportation recipients', '/api/messaging/transportation/recipients', 'Pre-filtered messaging audience.', 'Derived locally from Core', 'projection', 'Projection only', array('study_year' => 'study_year', 'family_id' => 'family_id', 'limit' => '5', 'offset' => '0'), array('status', 'recipients'));
+        $e['transport_options'] = $this->api_endpoint('transportation', 'Transportation', 'Transportation options', '/api/messaging/transportation/options', 'Bus, route, class, and section filters.', 'Derived locally from Core', 'projection', 'Projection only', array('study_year' => 'study_year'), array('status'));
+
+        $e['financial_card'] = $this->api_endpoint('financial', 'Financial', 'Family financial card', '/api/families/{family_id}/financial-card', 'Official summary, dues, and ledger.', 'Financial summary, dues, transactions', 'integrated', 'Integrated', array('study_year' => 'study_year'), array('status', 'family_summary', 'due_allocations', 'student_transactions'));
+        $e['financial_summary_message'] = $this->api_endpoint('financial', 'Financial', 'Messaging financial summary', '/api/families/{family_id}/financial-summary', 'Compact message-ready financial summary.', 'Derived from Core financial data', 'projection', 'Projection only', array('study_year' => 'study_year'), array('status'));
+        $e['payment_report'] = $this->api_endpoint('financial', 'Financial', 'Messaging payment report', '/api/families/{family_id}/payment-report', 'Message-ready payment report.', 'Derived from Core financial data', 'projection', 'Projection only', array('study_year' => 'study_year'), array('family_id', 'study_year', 'students', 'financial'));
+        $e['financial_recipients'] = $this->api_endpoint('financial', 'Financial', 'Messaging financial recipients', '/api/messaging/recipients', 'Pre-filtered collection audience.', 'Derived locally from Core', 'projection', 'Projection only', array('study_year' => 'study_year', 'family_id' => 'family_id', 'limit' => '5', 'offset' => '0'), array('status', 'recipients'));
+
+        $e['financial'] = $this->api_endpoint('financial_contract', 'Financial contracts', 'Canonical family financial', '/api/families/{family_id}/financial', 'Normalized family balance contract.', 'Potential canonical summary feed', 'planned', 'Available later', array('study_year' => 'study_year'), array('family_id', 'study_year'));
+        $e['balance_alias'] = $this->api_endpoint('financial_contract', 'Financial contracts', 'Balance alias', '/api/families/{family_id}/balance', 'Alias of family financial summary.', 'Do not ingest duplicate alias', 'projection', 'Alias only', array('study_year' => 'study_year'), array('family_id', 'study_year'));
+        $e['financial_family_alias'] = $this->api_endpoint('financial_contract', 'Financial contracts', 'Financial family alias', '/api/financial/families/{family_id}', 'Alias of family financial summary.', 'Do not ingest duplicate alias', 'projection', 'Alias only', array('study_year' => 'study_year'), array('family_id', 'study_year'));
+        $e['financial_transactions'] = $this->api_endpoint('financial_contract', 'Financial contracts', 'Financial transactions', '/api/families/{family_id}/financial-transactions', 'Normalized paginated ledger.', 'Potential canonical transaction feed', 'planned', 'Available later', array('study_year' => 'study_year', 'limit' => '20', 'offset' => '0'), array('status', 'transactions'));
+        $e['transactions_alias'] = $this->api_endpoint('financial_contract', 'Financial contracts', 'Transactions alias', '/api/families/{family_id}/transactions', 'Alias of normalized ledger.', 'Do not ingest duplicate alias', 'projection', 'Alias only', array('study_year' => 'study_year', 'limit' => '20', 'offset' => '0'), array('status', 'transactions'));
+        $e['dues'] = $this->api_endpoint('financial_contract', 'Financial contracts', 'Family dues', '/api/families/{family_id}/dues', 'Normalized due allocation collection.', 'Potential canonical dues feed', 'planned', 'Available later', array('study_year' => 'study_year', 'limit' => '20', 'offset' => '0'), array('status', 'dues'));
+        $e['receipts'] = $this->api_endpoint('financial_contract', 'Financial contracts', 'Family receipts', '/api/families/{family_id}/receipts', 'Receipt-like credit records.', 'Derived from transactions', 'planned', 'Available later', array('study_year' => 'study_year', 'limit' => '20', 'offset' => '0'), array('status', 'receipts'));
+        $e['payments'] = $this->api_endpoint('financial_contract', 'Financial contracts', 'Family payments', '/api/families/{family_id}/payments', 'Reserved payment entity; currently empty.', 'No proven Core entity', 'deferred', 'Deferred', array('study_year' => 'study_year', 'limit' => '20', 'offset' => '0'), array('status', 'payments'));
+        $e['student_financial'] = $this->api_endpoint('financial_contract', 'Financial contracts', 'Student financial summary', '/api/students/{student_key}/financial-summary', 'Normalized financial summary for one student.', 'Potential student financial projection', 'planned', 'Available later', array('study_year' => 'study_year'), array('status', 'oracle_student_key', 'oracle_family_id', 'oracle_student_id', 'study_year', 'summary'));
+        $e['student_financial_alias'] = $this->api_endpoint('financial_contract', 'Financial contracts', 'Student financial alias', '/api/students/{student_key}/financial', 'Alias of student financial summary.', 'Do not ingest duplicate alias', 'projection', 'Alias only', array('study_year' => 'study_year'), array('status', 'oracle_student_key', 'oracle_family_id', 'oracle_student_id', 'study_year', 'summary'));
+
+        $e['financial_diagnostics'] = $this->api_endpoint('diagnostics', 'Diagnostics', 'Financial diagnostics', '/api/financial/diagnostics', 'Counts and readiness of finance sources.', 'Sync diagnostics only', 'diagnostic', 'Diagnostic', array('study_year' => 'study_year'), array('status', 'diagnostics', 'readiness'));
+        $e['crosswalk'] = $this->api_endpoint('crosswalk', 'Student crosswalk', 'Student crosswalk', '/api/students/crosswalk', 'Canonical family/student identity mapping.', 'Existing Core identity keys', 'planned', 'Available later', array('study_year' => 'study_year', 'family_id' => 'family_id', 'student_id' => 'student_id', 'limit' => '20', 'offset' => '0'), array('status'));
+        $e['crosswalk_diagnostics'] = $this->api_endpoint('crosswalk', 'Student crosswalk', 'Crosswalk diagnostics', '/api/students/crosswalk/diagnostics', 'Completeness and duplicate diagnostics.', 'Sync diagnostics only', 'diagnostic', 'Diagnostic', array('study_year' => 'study_year'), array('status'));
+        $e['crosswalk_schema'] = $this->api_endpoint('crosswalk', 'Student crosswalk', 'Crosswalk schema candidates', '/api/students/crosswalk/schema-candidates', 'Candidate Oracle identity columns.', 'Design diagnostics only', 'diagnostic', 'Diagnostic', array(), array('status'));
+        return $e;
     }
 
     public function sync_runs() {
@@ -282,6 +584,152 @@ class Olama_Oracle_Admin {
 
     private function field($label, $key, $value, $type = 'text') {
         echo '<tr><th><label for="olama_' . esc_attr($key) . '">' . esc_html($label) . '</label></th><td><input class="regular-text" id="olama_' . esc_attr($key) . '" type="' . esc_attr($type) . '" name="settings[' . esc_attr($key) . ']" value="' . esc_attr($value) . '"></td></tr>';
+    }
+
+    private function simple_sync_panel($study_year) {
+        $settings = Olama_Oracle_Settings::get();
+        $configured = !empty($settings['base_url']) && !empty($settings['api_key']);
+
+        echo '<section class="olama-oracle-connection-card ' . ($configured ? 'is-ready' : 'is-missing') . '">';
+        echo '<div><span class="olama-oracle-status-dot" aria-hidden="true"></span><strong>' . esc_html($configured ? 'الاتصال مُعدّ' : 'الاتصال غير مكتمل') . '</strong><p>' . esc_html($configured ? 'Oracle Bridge جاهز للمزامنة.' : 'أدخل رابط Oracle Bridge ومفتاح API من صفحة الإعدادات.') . '</p></div>';
+        echo '<a class="button olama-oracle-btn olama-oracle-btn-secondary" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-settings')) . '">' . esc_html($configured ? 'مراجعة الاتصال' : 'إعداد الاتصال') . '</a>';
+        echo '</section>';
+
+        echo '<section class="olama-oracle-sync-actions" aria-label="خيارات المزامنة">';
+        echo '<article class="olama-oracle-sync-choice olama-oracle-sync-choice-primary">';
+        echo '<div class="olama-oracle-choice-icon dashicons dashicons-update-alt" aria-hidden="true"></div><div><span class="olama-oracle-eyebrow">المزامنة الرئيسية</span><h2>مزامنة جميع العائلات</h2><p>تحديث دليل العائلات، ثم الطلاب وبياناتهم للسنة الدراسية المحددة. السجلات غير المتغيرة يتم تخطي كتابتها تلقائياً.</p></div>';
+        echo '<label for="olama-oracle-all-year">السنة الدراسية</label><input id="olama-oracle-all-year" type="text" value="' . esc_attr($study_year) . '" placeholder="2026-2027" data-olama-sync-year required>';
+        echo '<button type="button" class="button button-primary olama-oracle-btn olama-oracle-btn-primary" data-olama-sync-all' . ($configured ? '' : ' disabled') . '><span class="dashicons dashicons-update"></span> مزامنة جميع العائلات</button>';
+        echo '</article>';
+
+        echo '<article class="olama-oracle-sync-choice">';
+        echo '<div class="olama-oracle-choice-icon dashicons dashicons-admin-users" aria-hidden="true"></div><div><span class="olama-oracle-eyebrow">تحديث محدد</span><h2>مزامنة عائلة واحدة</h2><p>استخدم رقم العائلة في Oracle لتحديث العائلة وأبنائها فقط، دون تشغيل المزامنة الشاملة.</p></div>';
+        echo '<div class="olama-oracle-single-fields"><label for="olama-oracle-family-id">رقم العائلة في Oracle</label><input id="olama-oracle-family-id" type="text" inputmode="numeric" placeholder="FAMILY_ID" data-olama-family-id><label for="olama-oracle-single-year">السنة الدراسية</label><input id="olama-oracle-single-year" type="text" value="' . esc_attr($study_year) . '" placeholder="2026-2027" data-olama-single-year></div>';
+        echo '<button type="button" class="button olama-oracle-btn olama-oracle-btn-secondary" data-olama-sync-one' . ($configured ? '' : ' disabled') . '><span class="dashicons dashicons-update"></span> مزامنة العائلة</button>';
+        echo '</article>';
+        echo '</section>';
+
+        echo '<section class="olama-oracle-progress-card" data-olama-progress-card aria-live="polite">';
+        echo '<div class="olama-oracle-progress-heading"><div><span class="olama-oracle-eyebrow">حالة العملية</span><h2 data-olama-progress-title>جاهز للمزامنة</h2><p data-olama-full-sync-message>اختر نوع المزامنة للبدء.</p></div><strong class="olama-oracle-progress-percent" data-olama-progress-percent>0%</strong></div>';
+        echo '<div class="olama-oracle-progress"><div class="olama-oracle-progress-bar" data-olama-full-sync-bar></div></div>';
+        echo '<div class="olama-oracle-phase-list"><span data-phase="families">1 <b>العائلات</b></span><span data-phase="students">2 <b>الطلاب والسنوات</b></span><span data-phase="completed">3 <b>الاكتمال</b></span></div>';
+        echo '<div class="olama-oracle-result-grid">';
+        foreach (array(
+            'families_processed' => 'العائلات المعالجة',
+            'students_changed' => 'الطلاب المضافون/المحدثون',
+            'student_years_changed' => 'سجلات السنوات المضافة/المحدثة',
+            'unchanged' => 'بدون تغيير',
+            'errors' => 'الأخطاء',
+        ) as $key => $label) {
+            echo '<div><span>' . esc_html($label) . '</span><strong data-olama-full-sync-field="' . esc_attr($key) . '">0</strong></div>';
+        }
+        echo '</div>';
+        echo '<div class="olama-oracle-progress-footer"><span data-olama-last-family></span><div data-olama-full-sync-links hidden><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="' . esc_url(admin_url('admin.php?page=olama-core')) . '">فتح Olama Core</a><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="#olama-oracle-validation">التحقق من البيانات</a></div></div>';
+        echo '</section>';
+    }
+
+    private function dashboard_validation_card() {
+        $report = (new Olama_Oracle_Validator())->report();
+        $failed_items = isset($report['Last failed sync items']) && is_array($report['Last failed sync items']) ? $report['Last failed sync items'] : array();
+        unset($report['Last failed sync items']);
+
+        $families = (int) ($report['Core families count'] ?? 0);
+        $students = (int) ($report['Core students count'] ?? 0);
+        $student_years = (int) ($report['Core student years count'] ?? 0);
+        $relationship_issues = (int) ($report['Students without matching family'] ?? 0) + (int) ($report['Student years without matching student'] ?? 0);
+        $duplicates = (int) ($report['Duplicate Oracle family IDs'] ?? 0) + (int) ($report['Duplicate Oracle student keys'] ?? 0);
+        $incomplete = (int) ($report['Missing student names'] ?? 0) + (int) ($report['Missing class/section for current study year'] ?? 0);
+        $issue_total = $relationship_issues + $duplicates + $incomplete;
+
+        echo '<section id="olama-oracle-validation" class="olama-oracle-dashboard-card olama-oracle-validation-card">';
+        echo '<div class="olama-oracle-section-header"><div><span class="olama-oracle-eyebrow">جودة البيانات</span><h2 class="olama-oracle-section-title">التحقق من بيانات Olama Core</h2><p class="olama-oracle-section-note">فحص العلاقات والتكرار والحقول الأساسية بعد المزامنة.</p></div>';
+        echo '<a class="button olama-oracle-btn olama-oracle-btn-secondary" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync#olama-oracle-validation')) . '"><span class="dashicons dashicons-update"></span> تحديث الفحص</a></div>';
+        echo '<div class="olama-oracle-validation-summary ' . (0 === $issue_total ? 'is-healthy' : 'has-warnings') . '"><span class="dashicons ' . (0 === $issue_total ? 'dashicons-yes-alt' : 'dashicons-warning') . '"></span><div><strong>' . esc_html(0 === $issue_total ? 'البيانات الأساسية سليمة' : number_format_i18n($issue_total) . ' ملاحظة تحتاج للمراجعة') . '</strong><p>' . esc_html(0 === $issue_total ? 'لم يكتشف الفحص مشاكل في العلاقات أو التكرار أو الحقول الأساسية.' : 'المزامنة تعمل، لكن بعض السجلات المحلية تحتاج إلى مراجعة أو استكمال.') . '</p></div></div>';
+        echo '<div class="olama-oracle-validation-grid">';
+        foreach (array(
+            array('label' => 'العائلات', 'value' => $families, 'state' => ''),
+            array('label' => 'الطلاب', 'value' => $students, 'state' => ''),
+            array('label' => 'سجلات السنوات', 'value' => $student_years, 'state' => ''),
+            array('label' => 'مشاكل العلاقات', 'value' => $relationship_issues, 'state' => $relationship_issues ? 'has-issue' : 'is-good'),
+            array('label' => 'السجلات المكررة', 'value' => $duplicates, 'state' => $duplicates ? 'has-issue' : 'is-good'),
+            array('label' => 'بيانات غير مكتملة', 'value' => $incomplete, 'state' => $incomplete ? 'has-warning' : 'is-good'),
+        ) as $metric) {
+            echo '<div class="' . esc_attr($metric['state']) . '"><span>' . esc_html($metric['label']) . '</span><strong>' . esc_html(number_format_i18n($metric['value'])) . '</strong></div>';
+        }
+        echo '</div>';
+        if ($failed_items) {
+            echo '<p class="olama-oracle-validation-note"><span class="dashicons dashicons-info-outline"></span> يوجد ' . esc_html(number_format_i18n(count($failed_items))) . ' عنصر فشل حديثاً في سجل المزامنة.</p>';
+        }
+        echo '</section>';
+    }
+
+    private function dashboard_recent_runs() {
+        global $wpdb;
+
+        $runs_table = $wpdb->prefix . 'olama_oracle_sync_runs';
+        $rows = $wpdb->get_results(
+            "SELECT * FROM `" . esc_sql($runs_table) . "` WHERE sync_type NOT IN ('validation', 'connection_test') ORDER BY id DESC LIMIT 10",
+            ARRAY_A
+        );
+
+        echo '<section id="olama-oracle-recent-runs" class="olama-oracle-dashboard-card olama-oracle-runs-card">';
+        echo '<div class="olama-oracle-section-header"><div><span class="olama-oracle-eyebrow">سجل النشاط</span><h2 class="olama-oracle-section-title">آخر 10 عمليات مزامنة</h2><p class="olama-oracle-section-note">ملخص النتيجة والمدة والتغييرات التي نفذتها كل عملية.</p></div></div>';
+        echo '<div class="olama-oracle-table-wrap"><table class="olama-oracle-table olama-oracle-runs-table"><thead><tr><th>العملية</th><th>النوع</th><th>الحالة</th><th>وقت البدء</th><th>المدة</th><th>النتيجة</th></tr></thead><tbody>';
+        if (!$rows) {
+            echo '<tr><td colspan="6" class="olama-oracle-empty-state">لا توجد عمليات مزامنة حتى الآن.</td></tr>';
+        }
+        foreach ($rows as $row) {
+            $status = sanitize_key((string) ($row['status'] ?? ''));
+            $status_labels = array(
+                'running' => 'قيد التشغيل',
+                'completed' => 'مكتملة',
+                'completed_with_errors' => 'مكتملة مع أخطاء',
+                'failed' => 'فشلت',
+                'paused' => 'متوقفة',
+            );
+            $type_labels = array(
+                'families' => 'العائلات',
+                'family' => 'عائلة واحدة',
+                'family_students' => 'طلاب عائلة',
+                'all_students' => 'الطلاب والسنوات',
+                'students_by_study_year' => 'طلاب السنة',
+            );
+            $created = (int) ($row['records_created'] ?? 0);
+            $updated = (int) ($row['records_updated'] ?? 0);
+            $skipped = (int) ($row['records_skipped'] ?? 0);
+            $failed = (int) ($row['records_failed'] ?? 0);
+            $started = !empty($row['started_at']) ? mysql2date('Y-m-d H:i', $row['started_at']) : '—';
+            $duration = $this->format_run_duration($row['started_at'] ?? '', $row['finished_at'] ?? '');
+
+            echo '<tr>';
+            echo '<td><strong>#' . esc_html((int) $row['id']) . '</strong></td>';
+            echo '<td>' . esc_html($type_labels[$row['sync_type']] ?? $row['sync_type']) . '</td>';
+            echo '<td><span class="olama-oracle-status-pill status-' . esc_attr($status) . '">' . esc_html($status_labels[$status] ?? $status) . '</span></td>';
+            echo '<td>' . esc_html($started) . '</td>';
+            echo '<td>' . esc_html($duration) . '</td>';
+            echo '<td><div class="olama-oracle-run-result"><span class="is-created">+' . esc_html($created) . ' مضاف</span><span class="is-updated">' . esc_html($updated) . ' محدث</span><span class="is-skipped">' . esc_html($skipped) . ' بدون تغيير</span>' . ($failed ? '<span class="is-failed">' . esc_html($failed) . ' فشل</span>' : '') . '</div></td>';
+            echo '</tr>';
+        }
+        echo '</tbody></table></div></section>';
+    }
+
+    private function format_run_duration($started_at, $finished_at) {
+        if (!$started_at) {
+            return '—';
+        }
+
+        $start = strtotime($started_at);
+        $end = $finished_at ? strtotime($finished_at) : current_time('timestamp');
+        if (!$start || !$end || $end < $start) {
+            return '—';
+        }
+
+        $seconds = $end - $start;
+        if ($seconds < 60) {
+            return $seconds . ' ث';
+        }
+
+        return floor($seconds / 60) . ' د ' . ($seconds % 60) . ' ث';
     }
 
     private function full_sync_panel($study_year) {
@@ -376,11 +824,14 @@ class Olama_Oracle_Admin {
         $progress['families_processed'] = isset($progress['families_processed']) ? (int) $progress['families_processed'] + $families_processed : $families_processed;
         $progress['total_students_inserted'] = isset($progress['total_students_inserted']) ? (int) $progress['total_students_inserted'] + (int) ($summary['students_created'] ?? 0) : (int) ($summary['students_created'] ?? 0);
         $progress['total_students_updated'] = isset($progress['total_students_updated']) ? (int) $progress['total_students_updated'] + (int) ($summary['students_updated'] ?? 0) : (int) ($summary['students_updated'] ?? 0);
+        $progress['total_students_skipped'] = isset($progress['total_students_skipped']) ? (int) $progress['total_students_skipped'] + (int) ($summary['students_skipped'] ?? 0) : (int) ($summary['students_skipped'] ?? 0);
         $progress['total_student_year_rows_inserted'] = isset($progress['total_student_year_rows_inserted']) ? (int) $progress['total_student_year_rows_inserted'] + (int) ($summary['student_years_created'] ?? 0) : (int) ($summary['student_years_created'] ?? 0);
         $progress['total_student_year_rows_updated'] = isset($progress['total_student_year_rows_updated']) ? (int) $progress['total_student_year_rows_updated'] + (int) ($summary['student_years_updated'] ?? 0) : (int) ($summary['student_years_updated'] ?? 0);
+        $progress['total_student_year_rows_skipped'] = isset($progress['total_student_year_rows_skipped']) ? (int) $progress['total_student_year_rows_skipped'] + (int) ($summary['student_years_skipped'] ?? 0) : (int) ($summary['student_years_skipped'] ?? 0);
         $progress['total_errors'] = isset($progress['total_errors']) ? (int) $progress['total_errors'] + (int) ($summary['failed'] ?? 0) : (int) ($summary['failed'] ?? 0);
         $progress['last_family_id'] = isset($summary['last_family_id']) ? sanitize_text_field($summary['last_family_id']) : ($progress['last_family_id'] ?? '');
         $progress['status'] = $done ? 'completed' : 'running';
+        $progress['phase'] = $done ? 'completed' : 'students';
         $progress['last_message'] = isset($result['message']) ? sanitize_text_field($result['message']) : '';
         if ($done) {
             $progress['completed_at'] = current_time('mysql');
@@ -422,10 +873,15 @@ class Olama_Oracle_Admin {
             'limit' => 25,
             'total_families' => $this->count_imported_families(),
             'families_processed' => 0,
+            'families_created' => 0,
+            'families_updated' => 0,
+            'families_skipped' => 0,
             'total_students_inserted' => 0,
             'total_students_updated' => 0,
+            'total_students_skipped' => 0,
             'total_student_year_rows_inserted' => 0,
             'total_student_year_rows_updated' => 0,
+            'total_student_year_rows_skipped' => 0,
             'total_errors' => 0,
             'last_family_id' => '',
             'last_error_message' => '',
@@ -434,6 +890,7 @@ class Olama_Oracle_Admin {
             'last_run_at' => '',
             'completed_at' => '',
             'status' => 'paused',
+            'phase' => 'ready',
         );
     }
 
@@ -466,8 +923,14 @@ class Olama_Oracle_Admin {
             'student_year_rows_updated' => (int) ($progress['total_student_year_rows_updated'] ?? 0),
             'errors' => (int) ($progress['total_errors'] ?? 0),
             'status' => $progress['status'] ?? 'paused',
+            'phase' => $progress['phase'] ?? 'ready',
             'progress_percentage' => $percentage,
             'last_family_id' => $progress['last_family_id'] ?? '',
+            'families_created' => (int) ($progress['families_created'] ?? 0),
+            'families_updated' => (int) ($progress['families_updated'] ?? 0),
+            'families_skipped' => (int) ($progress['families_skipped'] ?? 0),
+            'students_skipped' => (int) ($progress['total_students_skipped'] ?? 0),
+            'student_year_rows_skipped' => (int) ($progress['total_student_year_rows_skipped'] ?? 0),
             'done' => (bool) $done,
             'message' => $message,
         );
@@ -477,6 +940,27 @@ class Olama_Oracle_Admin {
         global $wpdb;
         $table = $wpdb->prefix . 'olama_core_families';
         return (int) $wpdb->get_var('SELECT COUNT(*) FROM `' . esc_sql($table) . '`');
+    }
+
+    private function get_run_counts($run_id) {
+        global $wpdb;
+
+        if (!$run_id) {
+            return array('created' => 0, 'updated' => 0, 'skipped' => 0, 'failed' => 0);
+        }
+
+        $table = $wpdb->prefix . 'olama_oracle_sync_runs';
+        $row = $wpdb->get_row($wpdb->prepare(
+            'SELECT records_created, records_updated, records_skipped, records_failed FROM `' . esc_sql($table) . '` WHERE id = %d',
+            $run_id
+        ), ARRAY_A);
+
+        return array(
+            'created' => (int) ($row['records_created'] ?? 0),
+            'updated' => (int) ($row['records_updated'] ?? 0),
+            'skipped' => (int) ($row['records_skipped'] ?? 0),
+            'failed' => (int) ($row['records_failed'] ?? 0),
+        );
     }
 
     private function action_form($label, $action, $needs_family = false, $has_offset = false, $has_study_year = false, $study_year = '') {

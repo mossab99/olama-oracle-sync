@@ -34,6 +34,12 @@ class Olama_Oracle_Student_Importer {
 
         if ($card['success']) {
             $students = $this->extract_students_from_card($card['data']);
+            $card_family = $this->extract_family_from_card($card['data']);
+            if ($card_family) {
+                $card_family['oracle_family_id'] = $oracle_family_id;
+                $card_family['raw'] = $card_family;
+                olama_core()->families()->upsert_from_source($card_family);
+            }
         }
 
         if (!$students) {
@@ -60,6 +66,8 @@ class Olama_Oracle_Student_Importer {
             $import_result = $this->import_record($student, $run_id, $source_endpoint, $study_year);
             $this->merge_summary($summary, $import_result);
         }
+
+        $this->import_related_domains($oracle_family_id, $study_year, $run_id, $summary);
 
         if ($own_run) {
             $this->logger->finish_run($run_id);
@@ -187,7 +195,8 @@ class Olama_Oracle_Student_Importer {
                 throw new RuntimeException('Matching Core family not found.');
             }
 
-            $student_data = array(
+            $student_data = array_merge($student, array(
+                '_partial' => strpos($endpoint, '/card') === false,
                 'oracle_family_id' => $family_id,
                 'oracle_student_id' => $student_id,
                 'student_name' => $this->first($student, array('student_name', 'name', 'full_name')),
@@ -199,7 +208,7 @@ class Olama_Oracle_Student_Importer {
                 'student_status' => $this->first($student, array('student_status', 'status')),
                 'student_status_name' => $this->first($student, array('student_status_name', 'status_name')),
                 'raw' => $student,
-            );
+            ));
             $student_result = olama_core()->students()->upsert_from_source($student_data);
             if ($log_items) {
                 $this->logger->log_item($run_id, 'student', $student_result['uid'], $family_id, $student_id, $student_result['operation'], 'success', 'Student ' . $student_result['operation']);
@@ -217,6 +226,7 @@ class Olama_Oracle_Student_Importer {
             $operation = $student_result['operation'];
             foreach ($this->student_year_records($student, $study_year) as $year_data) {
                 $year_data = array_merge($year_data, array(
+                    '_partial' => strpos($endpoint, '/card') === false,
                     'oracle_family_id' => $family_id,
                     'oracle_student_id' => $student_id,
                     'raw' => isset($year_data['raw']) ? $year_data['raw'] : $student,
@@ -333,6 +343,8 @@ class Olama_Oracle_Student_Importer {
                 'school_name' => $this->first($record, array('school_name')),
                 'class_id' => $this->first($record, array('class_id')),
                 'class_name' => $this->first($record, array('class_name')),
+                'branch_id' => $this->first($record, array('branch_id')),
+                'branch_name' => $this->first($record, array('branch_name')),
                 'section_id' => $this->first($record, array('section_id')),
                 'section_name' => $this->first($record, array('section_name')),
                 'student_status' => $this->first($record, array('student_status', 'student_year_status', 'status')),
@@ -340,6 +352,13 @@ class Olama_Oracle_Student_Importer {
                 'student_year_status' => $this->first($record, array('student_year_status', 'student_status', 'status')),
                 'registration_date' => $this->first($record, array('registration_date', 'register_date', 'date_registered')),
                 'withdraw_date' => $this->first($record, array('withdraw_date', 'withdrawal_date')),
+                'renew_student' => $this->first($record, array('renew_student', 'is_renewed')),
+                'system_respect' => $this->first($record, array('system_respect', 'commitment_to_system')),
+                'no_absent' => $this->first($record, array('no_absent', 'absence_count')),
+                'final_mrk_result' => $this->first($record, array('final_mrk_result', 'final_mark_result', 'final_result')),
+                'notes' => $this->first($record, array('notes', 'academic_notes')),
+                'date_created' => $this->first($record, array('date_created')),
+                'date_modified' => $this->first($record, array('date_modified')),
                 'raw' => $record,
             );
         }
@@ -357,6 +376,61 @@ class Olama_Oracle_Student_Importer {
         }
 
         return $default;
+    }
+
+    private function extract_family_from_card($data) {
+        foreach ($this->card_student_containers($data) as $container) {
+            if (isset($container['family']) && is_array($container['family'])) {
+                return $container['family'];
+            }
+        }
+        return array();
+    }
+
+    private function import_related_domains($family_id, $study_year, $run_id, &$summary) {
+        $query = array('study_year' => $study_year);
+        $financial = $this->client->get_family_financial_card($family_id, $query);
+        if (!empty($financial['success']) && is_array($financial['data'])) {
+            try {
+                $data = $financial['data'];
+                if (!empty($data['family_summary']) && is_array($data['family_summary'])) {
+                    $data['family_summary']['oracle_family_id'] = $family_id;
+                    $data['family_summary']['study_year'] = $study_year;
+                    $result = olama_core()->financial()->upsert_summary_from_source($data['family_summary']);
+                    $this->logger->log_item($run_id, 'family_financial', 'ORA-FAM-' . $family_id, $family_id, null, $result['operation'], 'success', 'Financial summary ' . $result['operation']);
+                }
+                $dues = isset($data['due_allocations']) && is_array($data['due_allocations']) ? $data['due_allocations'] : array();
+                $transactions = isset($data['student_transactions']) && is_array($data['student_transactions']) ? $data['student_transactions'] : array();
+                olama_core()->financial()->replace_dues_from_source($family_id, $study_year, $dues);
+                olama_core()->financial()->replace_transactions_from_source($family_id, $study_year, $transactions);
+                $this->logger->log_item($run_id, 'financial_dues', 'ORA-FAM-' . $family_id, $family_id, null, 'replaced', 'success', 'Financial dues synchronized: ' . count($dues));
+                $this->logger->log_item($run_id, 'financial_transactions', 'ORA-FAM-' . $family_id, $family_id, null, 'replaced', 'success', 'Financial transactions synchronized: ' . count($transactions));
+                $this->logger->store_payload('financial', $family_id, null, '/api/families/' . $family_id . '/financial-card', $data);
+            } catch (Exception $e) {
+                $summary['failed']++;
+                $this->logger->log_item($run_id, 'family_financial', 'ORA-FAM-' . $family_id, $family_id, null, 'failed', 'failed', $e->getMessage());
+            }
+        } else {
+            $summary['failed']++;
+            $this->logger->log_item($run_id, 'family_financial', 'ORA-FAM-' . $family_id, $family_id, null, 'failed', 'failed', isset($financial['message']) ? $financial['message'] : 'Financial endpoint unavailable.');
+        }
+
+        $transportation = $this->client->get_family_transportation($family_id, $query);
+        if (!empty($transportation['success']) && is_array($transportation['data'])) {
+            try {
+                $data = $transportation['data'];
+                $rows = isset($data['transportation']) && is_array($data['transportation']) ? $data['transportation'] : array();
+                olama_core()->transportation()->replace_family_year_from_source($family_id, $study_year, $rows);
+                $this->logger->log_item($run_id, 'transportation', 'ORA-FAM-' . $family_id, $family_id, null, 'replaced', 'success', 'Transportation rows synchronized: ' . count($rows));
+                $this->logger->store_payload('transportation', $family_id, null, '/api/families/' . $family_id . '/transportation', $data);
+            } catch (Exception $e) {
+                $summary['failed']++;
+                $this->logger->log_item($run_id, 'transportation', 'ORA-FAM-' . $family_id, $family_id, null, 'failed', 'failed', $e->getMessage());
+            }
+        } else {
+            $summary['failed']++;
+            $this->logger->log_item($run_id, 'transportation', 'ORA-FAM-' . $family_id, $family_id, null, 'failed', 'failed', isset($transportation['message']) ? $transportation['message'] : 'Transportation endpoint unavailable.');
+        }
     }
 
     private function merge_summary(&$summary, $result) {
