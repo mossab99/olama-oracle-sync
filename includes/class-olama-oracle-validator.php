@@ -10,6 +10,7 @@ class Olama_Oracle_Validator {
 
         $families = $wpdb->prefix . 'olama_core_families';
         $students = $wpdb->prefix . 'olama_core_students';
+        $employees = $wpdb->prefix . 'olama_core_employees';
         $years = $wpdb->prefix . 'olama_core_student_years';
         $items = $wpdb->prefix . 'olama_oracle_sync_items';
         $settings_year = Olama_Oracle_Settings::get('default_study_year');
@@ -17,6 +18,8 @@ class Olama_Oracle_Validator {
         return array(
             'Core families count' => (int) $wpdb->get_var('SELECT COUNT(*) FROM `' . esc_sql($families) . '`'),
             'Core students count' => (int) $wpdb->get_var('SELECT COUNT(*) FROM `' . esc_sql($students) . '`'),
+            'Core employees count' => (int) $wpdb->get_var('SELECT COUNT(*) FROM `' . esc_sql($employees) . '`'),
+            'Active Core employees count' => (int) $wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM `' . esc_sql($employees) . '` WHERE employee_status=%s', 'مستمر')),
             'Core student years count' => (int) $wpdb->get_var('SELECT COUNT(*) FROM `' . esc_sql($years) . '`'),
             'Students without matching family' => (int) $wpdb->get_var('SELECT COUNT(*) FROM `' . esc_sql($students) . '` s LEFT JOIN `' . esc_sql($families) . '` f ON s.family_uid = f.family_uid WHERE f.id IS NULL'),
             'Student years without matching student' => (int) $wpdb->get_var('SELECT COUNT(*) FROM `' . esc_sql($years) . '` y LEFT JOIN `' . esc_sql($students) . '` s ON y.student_uid = s.student_uid WHERE s.id IS NULL'),

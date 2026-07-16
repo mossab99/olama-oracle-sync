@@ -58,6 +58,10 @@ class Olama_Oracle_Admin {
             $result = (new Olama_Oracle_Family_Importer($this->client, $this->logger))->import_all();
             $success = $result['success'];
             $message = $result['message'];
+        } elseif ('import_employees' === $action) {
+            $result = (new Olama_Oracle_Employee_Importer($this->client, $this->logger))->import_all();
+            $success = $result['success'];
+            $message = $result['message'];
         } elseif ('import_one_family' === $action) {
             $family_id = isset($_POST['oracle_family_id']) ? sanitize_text_field(wp_unslash($_POST['oracle_family_id'])) : '';
             if ($family_id) {
@@ -480,7 +484,7 @@ class Olama_Oracle_Admin {
                 return (int) $data[$field];
             }
         }
-        foreach (array('families', 'students', 'recipients', 'transportation', 'items', 'transactions', 'dues', 'receipts', 'payments', 'academic_history') as $field) {
+        foreach (array('families', 'students', 'employees', 'recipients', 'transportation', 'items', 'transactions', 'dues', 'receipts', 'payments', 'academic_history') as $field) {
             if (isset($data[$field]) && is_array($data[$field])) {
                 return count($data[$field]);
             }
@@ -503,6 +507,19 @@ class Olama_Oracle_Admin {
         $e['students'] = $this->api_endpoint('identity', 'Families & students', 'Students list', '/api/students', 'Active student directory.', 'Students and academic years', 'integrated', 'Integrated', array('limit' => '5', 'offset' => '0', 'study_year' => 'study_year'), array('status', 'students'));
         $e['student'] = $this->api_endpoint('identity', 'Families & students', 'Student details', '/api/students/{family_id}/{student_id}', 'One current student record.', 'Student lookup', 'planned', 'Available later', array(), array('status', 'student'));
         $e['student_search'] = $this->api_endpoint('identity', 'Families & students', 'Student search', '/api/students/search', 'Search students by name or identifier.', 'Search helper', 'integrated', 'Integrated', array('q' => 'search'), array('status', 'students'));
+
+        $e['employees'] = $this->api_endpoint(
+            'employees',
+            'Employees',
+            'Active employees',
+            '/api/employees',
+            'HR_EMP_CARD employees whose resolved Oracle status is exactly مستمر. Returns identity, contact, job, appointment, and qualification fields with read-only pagination.',
+            'Future OLAMA Users employee accounts and staff identities',
+            'planned',
+            'API ready',
+            array('limit' => '5', 'offset' => '0'),
+            array('status', 'employee_status', 'count', 'limit', 'offset', 'employees')
+        );
 
         $e['family_card'] = $this->api_endpoint('cards', 'Detailed cards', 'Family card', '/api/families/{family_id}/card', 'Detailed family, children, and academics.', 'Families, students, academic years', 'integrated', 'Integrated', array('study_year' => 'study_year'), array('status', 'family', 'students'));
         $e['student_card'] = $this->api_endpoint('cards', 'Detailed cards', 'Student card', '/api/families/{family_id}/students/{student_id}/card', 'Detailed student and academic history.', 'Student knowledge projection', 'planned', 'Available later', array('study_year' => 'study_year'), array('status', 'student', 'academic_history'));
@@ -589,6 +606,13 @@ class Olama_Oracle_Admin {
     private function simple_sync_panel($study_year) {
         $settings = Olama_Oracle_Settings::get();
         $configured = !empty($settings['base_url']) && !empty($settings['api_key']);
+
+        echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><div><h2 class="olama-oracle-section-title">Employee master data</h2><p class="olama-oracle-section-note">Import Oracle employees whose status is exactly مستمر into OLAMA Core. This does not create WordPress accounts.</p></div></div>';
+        echo '<form method="post" action="' . esc_url(admin_url('admin.php?page=olama-oracle-sync')) . '">';
+        wp_nonce_field('olama_oracle_action');
+        echo '<input type="hidden" name="olama_oracle_action" value="import_employees">';
+        submit_button('Import active employees to Core', 'primary olama-oracle-btn olama-oracle-btn-primary', 'submit', false);
+        echo '</form></section>';
 
         echo '<section class="olama-oracle-connection-card ' . ($configured ? 'is-ready' : 'is-missing') . '">';
         echo '<div><span class="olama-oracle-status-dot" aria-hidden="true"></span><strong>' . esc_html($configured ? 'الاتصال مُعدّ' : 'الاتصال غير مكتمل') . '</strong><p>' . esc_html($configured ? 'Oracle Bridge جاهز للمزامنة.' : 'أدخل رابط Oracle Bridge ومفتاح API من صفحة الإعدادات.') . '</p></div>';

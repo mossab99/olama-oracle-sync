@@ -95,6 +95,7 @@ function olama_oracle_sync_bootstrap() {
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-api-client.php';
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-sync-logger.php';
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-family-importer.php';
+    require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-employee-importer.php';
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-student-importer.php';
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-validator.php';
     require_once OLAMA_ORACLE_SYNC_PATH . 'admin/class-olama-oracle-admin.php';
