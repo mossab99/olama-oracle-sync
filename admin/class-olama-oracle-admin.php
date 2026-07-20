@@ -27,14 +27,14 @@ class Olama_Oracle_Admin {
     }
 
     public function register_menu() {
-        add_menu_page('Olama Oracle Sync', 'Olama Oracle Sync', 'manage_options', 'olama-oracle-sync', array($this, 'dashboard'), 'dashicons-update-alt', 57);
-        add_submenu_page('olama-oracle-sync', 'Dashboard', 'Dashboard', 'manage_options', 'olama-oracle-sync', array($this, 'dashboard'));
-        add_submenu_page('olama-oracle-sync', 'Settings', 'Settings', 'manage_options', 'olama-oracle-sync-settings', array($this, 'settings'));
-        add_submenu_page('olama-oracle-sync', 'API Map', 'API Map', 'manage_options', 'olama-oracle-sync-api-map', array($this, 'api_map'));
+        add_menu_page('Olama Oracle Sync', 'Olama Oracle Sync', 'olama_access_oracle_sync', 'olama-oracle-sync', array($this, 'dashboard'), 'dashicons-update-alt', 57);
+        add_submenu_page('olama-oracle-sync', 'Dashboard', 'Dashboard', 'olama_access_oracle_sync', 'olama-oracle-sync', array($this, 'dashboard'));
+        add_submenu_page('olama-oracle-sync', 'Settings', 'Settings', 'olama_access_oracle_sync', 'olama-oracle-sync-settings', array($this, 'settings'));
+        add_submenu_page('olama-oracle-sync', 'API Map', 'API Map', 'olama_access_oracle_sync', 'olama-oracle-sync-api-map', array($this, 'api_map'));
     }
 
     public function handle_actions() {
-        if (!current_user_can('manage_options') || empty($_POST['olama_oracle_action'])) {
+        if (!current_user_can('olama_access_oracle_sync') || empty($_POST['olama_oracle_action'])) {
             return;
         }
 
@@ -60,6 +60,10 @@ class Olama_Oracle_Admin {
             $message = $result['message'];
         } elseif ('import_employees' === $action) {
             $result = (new Olama_Oracle_Employee_Importer($this->client, $this->logger))->import_all();
+            $success = $result['success'];
+            $message = $result['message'];
+        } elseif ('import_transport_master' === $action) {
+            $result = (new Olama_Oracle_Transport_Master_Importer($this->client, $this->logger))->import_all($study_year);
             $success = $result['success'];
             $message = $result['message'];
         } elseif ('import_one_family' === $action) {
@@ -383,7 +387,7 @@ class Olama_Oracle_Admin {
         echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page olama-api-map-page">';
         echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">API Map</h1><p class="olama-oracle-page-subtitle">دليل واختبار واجهات Oracle API Bridge وربطها الحالي أو المستقبلي مع Olama Core.</p></div>';
         echo '<div class="olama-oracle-header-actions"><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-settings')) . '">Settings</a></div></div>';
-        echo '<section class="olama-oracle-section olama-api-map-intro"><div><strong>Read-only diagnostics</strong><p>Tests validate connectivity and response contracts only. They never synchronize or modify Olama Core data.</p></div><span class="dashicons dashicons-shield-alt"></span></section>';
+        echo '<section class="olama-oracle-section olama-api-map-intro"><div><strong>Read-only diagnostics</strong><p>Tests validate connectivity and response contracts only. They never synchronize or modify Olama Core data. Oracle Sync is the sole Bridge consumer; domain plugins read the canonical Core tables.</p></div><span class="dashicons dashicons-shield-alt"></span></section>';
         echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><div><h2 class="olama-oracle-section-title">Test parameters</h2><p class="olama-oracle-section-note">Sample identifiers are used only for endpoints that require them.</p></div></div>';
         echo '<div class="olama-api-map-controls">';
         echo '<label><span>Family number</span><input id="olama-api-family-id" type="number" min="1" value="1161"></label>';
@@ -412,7 +416,7 @@ class Olama_Oracle_Admin {
     }
 
     public function ajax_test_api_endpoint() {
-        if (!current_user_can('manage_options')) {
+        if (!current_user_can('olama_access_oracle_sync')) {
             wp_send_json_error(array('message' => 'You do not have permission to test Oracle APIs.'), 403);
         }
         if (!check_ajax_referer('olama_oracle_api_map', 'nonce', false)) {
@@ -484,7 +488,7 @@ class Olama_Oracle_Admin {
                 return (int) $data[$field];
             }
         }
-        foreach (array('families', 'students', 'employees', 'recipients', 'transportation', 'items', 'transactions', 'dues', 'receipts', 'payments', 'academic_history') as $field) {
+        foreach (array('families', 'students', 'employees', 'buses', 'regions', 'recipients', 'transportation', 'items', 'transactions', 'dues', 'receipts', 'payments', 'academic_history') as $field) {
             if (isset($data[$field]) && is_array($data[$field])) {
                 return count($data[$field]);
             }
@@ -525,6 +529,30 @@ class Olama_Oracle_Admin {
         $e['student_card'] = $this->api_endpoint('cards', 'Detailed cards', 'Student card', '/api/families/{family_id}/students/{student_id}/card', 'Detailed student and academic history.', 'Student knowledge projection', 'planned', 'Available later', array('study_year' => 'study_year'), array('status', 'student', 'academic_history'));
 
         $e['transportation'] = $this->api_endpoint('transportation', 'Transportation', 'Family transportation', '/api/families/{family_id}/transportation', 'Transportation assignments for a family.', 'Student transportation', 'integrated', 'Integrated', array('study_year' => 'study_year'), array('status', 'transportation'));
+        $e['transport_buses'] = $this->api_endpoint(
+            'transportation',
+            'Transportation',
+            'Transportation bus master',
+            '/api/transportation/buses',
+            'Read-only Oracle fleet master used exclusively by Olama Oracle Sync.',
+            'olama_core_transport_buses → Transportation planning projection',
+            'integrated',
+            'Core master feed',
+            array(),
+            array('status', 'count', 'buses')
+        );
+        $e['transport_regions'] = $this->api_endpoint(
+            'transportation',
+            'Transportation',
+            'Transportation regions',
+            '/api/transportation/regions',
+            'Read-only source regions and demand counts for the selected study year.',
+            'olama_core_transport_regions → major-area mapping',
+            'integrated',
+            'Core master feed',
+            array('study_year' => 'study_year'),
+            array('status', 'study_year', 'count', 'regions')
+        );
         $e['transport_recipients'] = $this->api_endpoint('transportation', 'Transportation', 'Messaging transportation recipients', '/api/messaging/transportation/recipients', 'Pre-filtered messaging audience.', 'Derived locally from Core', 'projection', 'Projection only', array('study_year' => 'study_year', 'family_id' => 'family_id', 'limit' => '5', 'offset' => '0'), array('status', 'recipients'));
         $e['transport_options'] = $this->api_endpoint('transportation', 'Transportation', 'Transportation options', '/api/messaging/transportation/options', 'Bus, route, class, and section filters.', 'Derived locally from Core', 'projection', 'Projection only', array('study_year' => 'study_year'), array('status'));
 
@@ -612,6 +640,14 @@ class Olama_Oracle_Admin {
         wp_nonce_field('olama_oracle_action');
         echo '<input type="hidden" name="olama_oracle_action" value="import_employees">';
         submit_button('Import active employees to Core', 'primary olama-oracle-btn olama-oracle-btn-primary', 'submit', false);
+        echo '</form></section>';
+
+        echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><div><h2 class="olama-oracle-section-title">Transportation master data</h2><p class="olama-oracle-section-note">Import Oracle buses and transportation regions into Olama Core. Transportation and other domain plugins read only the canonical Core copy.</p></div></div>';
+        echo '<form method="post" action="' . esc_url(admin_url('admin.php?page=olama-oracle-sync')) . '">';
+        wp_nonce_field('olama_oracle_action');
+        echo '<input type="hidden" name="olama_oracle_action" value="import_transport_master">';
+        echo '<input type="hidden" name="study_year" value="' . esc_attr($study_year) . '">';
+        submit_button('Import transportation master to Core', 'primary olama-oracle-btn olama-oracle-btn-primary', 'submit', false);
         echo '</form></section>';
 
         echo '<section class="olama-oracle-connection-card ' . ($configured ? 'is-ready' : 'is-missing') . '">';
@@ -866,7 +902,7 @@ class Olama_Oracle_Admin {
     }
 
     private function verify_full_sync_ajax() {
-        if (!current_user_can('manage_options')) {
+        if (!current_user_can('olama_access_oracle_sync')) {
             wp_send_json_error(array('message' => 'Permission denied.'), 403);
         }
         check_ajax_referer('olama_oracle_full_sync', 'nonce');

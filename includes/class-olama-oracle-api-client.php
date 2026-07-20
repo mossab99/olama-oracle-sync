@@ -43,6 +43,14 @@ class Olama_Oracle_Api_Client {
         return $this->request('GET', '/api/families/' . rawurlencode($oracle_family_id) . '/transportation', $params);
     }
 
+    public function get_transportation_buses() {
+        return $this->request('GET', '/api/transportation/buses', array('include_inactive' => 1));
+    }
+
+    public function get_transportation_regions($study_year) {
+        return $this->request('GET', '/api/transportation/regions', array('study_year' => $study_year));
+    }
+
     public function get_students($params = array()) {
         return $this->request('GET', '/api/students', $params);
     }
