@@ -62,6 +62,10 @@ class Olama_Oracle_Admin {
             $result = (new Olama_Oracle_Employee_Importer($this->client, $this->logger))->import_all();
             $success = $result['success'];
             $message = $result['message'];
+        } elseif ('import_academic_info' === $action) {
+            $result = (new Olama_Oracle_Academic_Importer($this->client, $this->logger))->import($study_year);
+            $success = $result['success'];
+            $message = $result['message'];
         } elseif ('import_transport_master' === $action) {
             $result = (new Olama_Oracle_Transport_Master_Importer($this->client, $this->logger))->import_all($study_year);
             $success = $result['success'];
@@ -488,7 +492,7 @@ class Olama_Oracle_Admin {
                 return (int) $data[$field];
             }
         }
-        foreach (array('families', 'students', 'employees', 'buses', 'regions', 'recipients', 'transportation', 'items', 'transactions', 'dues', 'receipts', 'payments', 'academic_history') as $field) {
+        foreach (array('families', 'students', 'employees', 'grades', 'sections', 'grade_sections', 'grade_subjects', 'buses', 'regions', 'recipients', 'transportation', 'items', 'transactions', 'dues', 'receipts', 'payments', 'academic_history') as $field) {
             if (isset($data[$field]) && is_array($data[$field])) {
                 return count($data[$field]);
             }
@@ -518,12 +522,20 @@ class Olama_Oracle_Admin {
             'Active employees',
             '/api/employees',
             'HR_EMP_CARD employees whose resolved Oracle status is exactly مستمر. Returns identity, contact, job, appointment, and qualification fields with read-only pagination.',
-            'Future OLAMA Users employee accounts and staff identities',
-            'planned',
-            'API ready',
+            'olama_core_employees → Employee 360 and OLAMA Users staff identities',
+            'integrated',
+            'Core master feed',
             array('limit' => '5', 'offset' => '0'),
             array('status', 'employee_status', 'count', 'limit', 'offset', 'employees')
         );
+
+        $e['academic_grades'] = $this->api_endpoint('academic', 'Academic info', 'Grade names', '/api/academic/grades', 'Canonical Oracle grade names from SCH_CLASSES.', 'olama_core_academic_grades', 'integrated', 'Core master feed', array(), array('status', 'count', 'grades'));
+        $e['academic_sections'] = $this->api_endpoint('academic', 'Academic info', 'Section names', '/api/academic/sections', 'Canonical Oracle section names from SCH_SECTIONS.', 'olama_core_academic_sections', 'integrated', 'Core master feed', array(), array('status', 'count', 'sections'));
+        $e['academic_grade_sections'] = $this->api_endpoint('academic', 'Academic info', 'Grade-section names', '/api/academic/grade-sections', 'Distinct grade-section relationships for a study year.', 'olama_core_academic_grade_sections', 'integrated', 'Core master feed', array('study_year' => 'study_year'), array('status', 'study_year', 'count', 'grade_sections'));
+        $e['academic_students_grade'] = $this->api_endpoint('academic', 'Academic info', 'Students in grade', '/api/academic/students', 'Academic student placements, filterable by grade.', 'olama_core_academic_students', 'integrated', 'Core master feed', array('study_year' => 'study_year', 'grade_id' => '1'), array('status', 'study_year', 'count', 'students'));
+        $e['academic_students_section'] = $this->api_endpoint('academic', 'Academic info', 'Students in grade-section', '/api/academic/students', 'Academic student placements filtered by grade and section.', 'olama_core_academic_students', 'integrated', 'Core master feed', array('study_year' => 'study_year', 'grade_id' => '1', 'section_id' => '1'), array('status', 'study_year', 'count', 'students'));
+        $e['academic_grade_subjects'] = $this->api_endpoint('academic', 'Academic info', 'Grade subjects', '/api/academic/grade-subjects', 'Grade subjects restricted by the highest active SCH_MRK_LAWS.LAW_ID. Each row includes law_id and is_active; active subjects are returned first.', 'olama_core_academic_grade_subjects (law_id and subject status)', 'integrated', 'Core master feed', array('study_year' => 'study_year'), array('status', 'study_year', 'count', 'grade_subjects'));
+        $e['academic_snapshot'] = $this->api_endpoint('academic', 'Academic info', 'Academic sync snapshot', '/api/academic/snapshot', 'Atomic academic payload containing grade and section masters, relationships, active student placements, and LAW_ID-scoped subjects with status.', 'All olama_core_academic_* tables', 'integrated', 'Sync endpoint', array('study_year' => 'study_year'), array('status', 'study_year', 'grades', 'sections', 'grade_sections', 'students', 'grade_subjects'));
 
         $e['family_card'] = $this->api_endpoint('cards', 'Detailed cards', 'Family card', '/api/families/{family_id}/card', 'Detailed family, children, and academics.', 'Families, students, academic years', 'integrated', 'Integrated', array('study_year' => 'study_year'), array('status', 'family', 'students'));
         $e['student_card'] = $this->api_endpoint('cards', 'Detailed cards', 'Student card', '/api/families/{family_id}/students/{student_id}/card', 'Detailed student and academic history.', 'Student knowledge projection', 'planned', 'Available later', array('study_year' => 'study_year'), array('status', 'student', 'academic_history'));
@@ -552,6 +564,42 @@ class Olama_Oracle_Admin {
             'Core master feed',
             array('study_year' => 'study_year'),
             array('status', 'study_year', 'count', 'regions')
+        );
+        $e['transport_students'] = $this->api_endpoint(
+            'transportation',
+            'Transportation',
+            'Transportation students',
+            '/api/transportation/students',
+            'Paginated Oracle transportation assignments with optional family and region filters.',
+            'Bulk alternative for olama_core_student_transportation',
+            'planned',
+            'API ready',
+            array('study_year' => 'study_year', 'limit' => '20', 'offset' => '0'),
+            array('status', 'study_year', 'count', 'total', 'limit', 'offset', 'students')
+        );
+        $e['transport_employees'] = $this->api_endpoint(
+            'transportation',
+            'Transportation',
+            'Transportation employees',
+            '/api/transportation/employees',
+            'Confirmed driver and companion employee references used by Oracle transportation records.',
+            'Employee references used by olama_core_transport_buses',
+            'projection',
+            'Reference feed',
+            array(),
+            array('status', 'count', 'employees')
+        );
+        $e['transport_summary'] = $this->api_endpoint(
+            'transportation',
+            'Transportation',
+            'Transportation summary',
+            '/api/transportation/summary',
+            'Read-only Oracle transportation totals for the selected study year.',
+            'Sync validation and diagnostics',
+            'diagnostic',
+            'Diagnostic',
+            array('study_year' => 'study_year'),
+            array('status', 'study_year', 'summary')
         );
         $e['transport_recipients'] = $this->api_endpoint('transportation', 'Transportation', 'Messaging transportation recipients', '/api/messaging/transportation/recipients', 'Pre-filtered messaging audience.', 'Derived locally from Core', 'projection', 'Projection only', array('study_year' => 'study_year', 'family_id' => 'family_id', 'limit' => '5', 'offset' => '0'), array('status', 'recipients'));
         $e['transport_options'] = $this->api_endpoint('transportation', 'Transportation', 'Transportation options', '/api/messaging/transportation/options', 'Bus, route, class, and section filters.', 'Derived locally from Core', 'projection', 'Projection only', array('study_year' => 'study_year'), array('status'));
@@ -640,6 +688,14 @@ class Olama_Oracle_Admin {
         wp_nonce_field('olama_oracle_action');
         echo '<input type="hidden" name="olama_oracle_action" value="import_employees">';
         submit_button('Import active employees to Core', 'primary olama-oracle-btn olama-oracle-btn-primary', 'submit', false);
+        echo '</form></section>';
+
+        echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><div><h2 class="olama-oracle-section-title">Academic information</h2><p class="olama-oracle-section-note">Refresh grades, sections, grade-section relationships, student placements, and grade subjects into Olama Core.</p></div></div>';
+        echo '<form method="post" action="' . esc_url(admin_url('admin.php?page=olama-oracle-sync')) . '" class="olama-oracle-inline-form">';
+        wp_nonce_field('olama_oracle_action');
+        echo '<input type="hidden" name="olama_oracle_action" value="import_academic_info">';
+        echo '<label for="olama-academic-study-year">Study year</label><input id="olama-academic-study-year" type="text" name="study_year" value="' . esc_attr($study_year) . '" placeholder="2026-2027" required>';
+        submit_button('Sync academic info to Core', 'primary olama-oracle-btn olama-oracle-btn-primary', 'submit', false);
         echo '</form></section>';
 
         echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><div><h2 class="olama-oracle-section-title">Transportation master data</h2><p class="olama-oracle-section-note">Import Oracle buses and transportation regions into Olama Core. Transportation and other domain plugins read only the canonical Core copy.</p></div></div>';

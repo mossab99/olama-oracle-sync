@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Olama Oracle Sync
  * Description: Standalone Oracle bridge sync plugin for importing Oracle families and students into Olama Core.
- * Version: 0.3.3
+ * Version: 0.4.1
  * Author: Olama
  */
 
@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('OLAMA_ORACLE_SYNC_VERSION', '0.3.3');
+define('OLAMA_ORACLE_SYNC_VERSION', '0.4.1');
 define('OLAMA_ORACLE_SYNC_FILE', __FILE__);
 define('OLAMA_ORACLE_SYNC_PATH', plugin_dir_path(__FILE__));
 define('OLAMA_ORACLE_SYNC_URL', plugin_dir_url(__FILE__));
@@ -96,6 +96,7 @@ function olama_oracle_sync_bootstrap() {
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-sync-logger.php';
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-family-importer.php';
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-employee-importer.php';
+    require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-academic-importer.php';
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-transport-master-importer.php';
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-student-importer.php';
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-validator.php';
