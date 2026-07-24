@@ -85,6 +85,64 @@ function olama_oracle_sync_refresh_family($oracle_family_id, $study_year = '') {
     return $result;
 }
 
+/**
+ * Refresh the canonical family contact directory in Olama Core.
+ *
+ * Consumer plugins call this command instead of reading Oracle credentials or
+ * writing Core tables themselves. The family importer owns pagination, payload
+ * mapping, and the existing per-record audit trail.
+ */
+function olama_oracle_sync_refresh_family_contacts() {
+    if (!function_exists('olama_core')) {
+        return array('success' => false, 'message' => 'Olama Core is required.');
+    }
+
+    $lock_key = 'olama_oracle_family_contacts_sync_lock';
+    if (get_transient($lock_key)) {
+        return array('success' => false, 'message' => 'A family contacts sync is already running. Please try again shortly.');
+    }
+
+    foreach (array(
+        'Olama_Oracle_Settings' => 'includes/class-olama-oracle-settings.php',
+        'Olama_Oracle_Api_Client' => 'includes/class-olama-oracle-api-client.php',
+        'Olama_Oracle_Sync_Logger' => 'includes/class-olama-oracle-sync-logger.php',
+        'Olama_Oracle_Family_Importer' => 'includes/class-olama-oracle-family-importer.php',
+    ) as $class_name => $relative_file) {
+        if (!class_exists($class_name)) {
+            require_once OLAMA_ORACLE_SYNC_PATH . $relative_file;
+        }
+    }
+
+    set_transient($lock_key, get_current_user_id() ?: 1, 30 * MINUTE_IN_SECONDS);
+    try {
+        $result = (new Olama_Oracle_Family_Importer(
+            new Olama_Oracle_Api_Client(),
+            new Olama_Oracle_Sync_Logger()
+        ))->import_all();
+
+        $run_id = isset($result['run_id']) ? absint($result['run_id']) : 0;
+        if ($run_id) {
+            global $wpdb;
+            $run = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT status, records_seen, records_created, records_updated, records_skipped, records_failed, finished_at
+                     FROM `{$wpdb->prefix}olama_oracle_sync_runs`
+                     WHERE id = %d",
+                    $run_id
+                ),
+                ARRAY_A
+            );
+            if ($run) {
+                $result['audit'] = $run;
+            }
+        }
+
+        return $result;
+    } finally {
+        delete_transient($lock_key);
+    }
+}
+
 function olama_oracle_sync_bootstrap() {
     if (!defined('OLAMA_CORE_VERSION') || !function_exists('olama_core')) {
         add_action('admin_notices', 'olama_oracle_sync_core_missing_notice');
