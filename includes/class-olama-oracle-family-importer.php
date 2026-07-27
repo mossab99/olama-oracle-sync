@@ -22,28 +22,20 @@ class Olama_Oracle_Family_Importer {
         $previous_first_id = null;
 
         do {
-            $result = $this->client->get_families(array('limit' => $limit, 'offset' => $offset));
-
-            if (!$result['success']) {
+            $result = $this->import_batch($offset, $limit, $run_id);
+            if (empty($result['success'])) {
                 $this->logger->finish_run($run_id, 'failed', $result['message']);
                 return $result;
             }
-
-            $families = $this->extract_list($result['data'], 'families');
-            $first_id = $families && is_array($families[0]) ? $this->first($families[0], array('family_id', 'oracle_family_id')) : null;
-            if ($first_id && $previous_first_id && (string) $first_id === (string) $previous_first_id) {
+            if ($previous_first_id && !empty($result['first_family_id']) && (string) $previous_first_id === (string) $result['first_family_id']) {
                 $this->logger->log_item($run_id, 'family', null, null, null, 'skipped', 'failed', 'Oracle bridge returned the same families page again; stopping to avoid duplicate pagination loop.');
                 break;
             }
-            $previous_first_id = $first_id;
 
-            foreach ($families as $family) {
-                $this->import_record($family, $run_id, '/api/families');
-                $seen++;
-            }
-
-            $offset += $limit;
-        } while (count($families) === $limit);
+            $seen += (int) $result['records_seen'];
+            $previous_first_id = $result['first_family_id'];
+            $offset = (int) $result['next_offset'];
+        } while (empty($result['done']));
 
         if (0 === $seen && $offset > $limit) {
             $this->logger->log_item($run_id, 'family', null, null, null, 'skipped', 'failed', 'No families were returned by the Oracle bridge.');
@@ -54,6 +46,35 @@ class Olama_Oracle_Family_Importer {
         }
 
         return array('success' => true, 'message' => 'Families import finished. Records received: ' . $seen . '.', 'run_id' => $run_id);
+    }
+
+    public function import_batch($offset, $limit, $run_id) {
+        $offset = max(0, absint($offset));
+        $limit = max(1, min(1000, absint($limit)));
+        $result = $this->client->get_families(array('limit' => $limit, 'offset' => $offset));
+
+        if (empty($result['success'])) {
+            return $result;
+        }
+
+        $families = $this->extract_list($result['data'], 'families');
+        foreach ($families as $family) {
+            if (is_array($family)) {
+                $this->import_record($family, $run_id, '/api/families');
+            }
+        }
+
+        $received = count($families);
+        $first_family_id = $received && is_array($families[0]) ? $this->first($families[0], array('family_id', 'oracle_family_id')) : '';
+        return array(
+            'success' => true,
+            'message' => 'Families batch finished.',
+            'records_seen' => $received,
+            'next_offset' => $offset + $received,
+            'done' => $received < $limit,
+            'first_family_id' => $first_family_id,
+            'run_id' => (int) $run_id,
+        );
     }
 
     public function import_one($oracle_family_id, $run_id = null) {

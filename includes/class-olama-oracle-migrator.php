@@ -18,6 +18,11 @@ class Olama_Oracle_Migrator {
         update_option('olama_oracle_sync_db_version', OLAMA_ORACLE_SYNC_VERSION);
     }
 
+    public static function deactivate() {
+        wp_clear_scheduled_hook('olama_oracle_scheduled_sync');
+        wp_clear_scheduled_hook('olama_oracle_cleanup_payloads');
+    }
+
     public static function default_settings() {
         return array(
             'base_url' => '',
@@ -25,8 +30,10 @@ class Olama_Oracle_Migrator {
             'default_study_year' => '',
             'request_timeout' => 30,
             'batch_size' => 100,
-            'store_raw_payloads' => 'yes',
+            'store_raw_payloads' => 'no',
+            'raw_payload_retention_days' => 7,
             'sync_mode' => 'manual',
+            'schedule_frequency' => 'daily',
         );
     }
 
@@ -38,6 +45,7 @@ class Olama_Oracle_Migrator {
         $runs = $wpdb->prefix . 'olama_oracle_sync_runs';
         $items = $wpdb->prefix . 'olama_oracle_sync_items';
         $payloads = $wpdb->prefix . 'olama_oracle_raw_payloads';
+        $jobs = $wpdb->prefix . 'olama_oracle_sync_jobs';
 
         dbDelta("CREATE TABLE {$runs} (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -86,6 +94,30 @@ class Olama_Oracle_Migrator {
             PRIMARY KEY  (id),
             KEY idx_entity (entity_type),
             KEY idx_oracle_keys (oracle_family_id, oracle_student_id)
+        ) {$charset_collate};");
+
+        dbDelta("CREATE TABLE {$jobs} (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            scope VARCHAR(40) NOT NULL,
+            study_year VARCHAR(30) NOT NULL,
+            status VARCHAR(30) NOT NULL,
+            current_phase VARCHAR(40) NOT NULL,
+            phase_index INT UNSIGNED DEFAULT 0,
+            total_phases INT UNSIGNED DEFAULT 0,
+            cursor_offset INT UNSIGNED DEFAULT 0,
+            batch_size INT UNSIGNED DEFAULT 25,
+            active_run_id BIGINT UNSIGNED NULL,
+            phase_runs LONGTEXT NULL,
+            summary_json LONGTEXT NULL,
+            message TEXT NULL,
+            error_summary TEXT NULL,
+            created_by BIGINT UNSIGNED NULL,
+            started_at DATETIME NOT NULL,
+            heartbeat_at DATETIME NULL,
+            finished_at DATETIME NULL,
+            PRIMARY KEY  (id),
+            KEY idx_status (status),
+            KEY idx_started_at (started_at)
         ) {$charset_collate};");
     }
 }

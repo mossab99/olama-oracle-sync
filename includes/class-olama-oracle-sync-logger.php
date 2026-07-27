@@ -87,4 +87,25 @@ class Olama_Oracle_Sync_Logger {
             'created_at' => current_time('mysql'),
         ));
     }
+
+    public function purge_expired_payloads($retention_days = null) {
+        global $wpdb;
+
+        $retention_days = null === $retention_days
+            ? absint(Olama_Oracle_Settings::get('raw_payload_retention_days'))
+            : absint($retention_days);
+        $retention_days = max(1, min(365, $retention_days));
+        $cutoff = gmdate('Y-m-d H:i:s', current_time('timestamp', true) - ($retention_days * DAY_IN_SECONDS));
+
+        return (int) $wpdb->query($wpdb->prepare(
+            "DELETE FROM `{$wpdb->prefix}olama_oracle_raw_payloads` WHERE created_at < %s",
+            $cutoff
+        ));
+    }
+
+    public function purge_all_payloads() {
+        global $wpdb;
+
+        return (int) $wpdb->query("DELETE FROM `{$wpdb->prefix}olama_oracle_raw_payloads`");
+    }
 }

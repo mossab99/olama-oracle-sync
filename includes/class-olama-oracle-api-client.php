@@ -69,6 +69,10 @@ class Olama_Oracle_Api_Client {
         }
 
         $url = $this->base_url . $path;
+        $params = $this->translate_study_year_params($params);
+        if (is_wp_error($params)) {
+            return array('success' => false, 'status_code' => 0, 'data' => null, 'message' => $params->get_error_message());
+        }
         if ($params && strtoupper($method) === 'GET') {
             $url = add_query_arg(array_map('sanitize_text_field', $params), $url);
         }
@@ -101,5 +105,25 @@ class Olama_Oracle_Api_Client {
         }
 
         return array('success' => true, 'status_code' => $code, 'data' => $data, 'message' => 'OK');
+    }
+
+    private function translate_study_year_params(array $params) {
+        if (!array_key_exists('study_year', $params) || trim((string) $params['study_year']) === '') {
+            return $params;
+        }
+        if (!function_exists('olama_core') || !method_exists(olama_core(), 'academic_calendar')) {
+            return new WP_Error('oracle_year_core_unavailable', 'Olama Core academic calendar is required to resolve the Oracle study year.');
+        }
+        $calendar = olama_core()->academic_calendar();
+        $year = $calendar->resolve_external_year('oracle', $params['study_year']);
+        if (!$year) {
+            return new WP_Error('oracle_year_unmapped', 'The requested study year is not defined in Olama Core.');
+        }
+        $external = $calendar->external_year_code((int) $year->id, 'oracle');
+        if ($external === '') {
+            return new WP_Error('oracle_year_mapping_missing', 'The Oracle study-year mapping is empty in Olama Core.');
+        }
+        $params['study_year'] = $external;
+        return $params;
     }
 }

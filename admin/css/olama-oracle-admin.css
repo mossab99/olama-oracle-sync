@@ -304,6 +304,9 @@
 }
 
 @media (max-width: 900px) {
+    .olama-oracle-kpi-grid-four {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
     .olama-oracle-admin .olama-oracle-kpi-grid,
     .olama-oracle-admin .olama-oracle-control-grid,
     .olama-oracle-admin #olama-oracle-full-sync > div[style*="grid-template-columns"],
@@ -364,8 +367,66 @@
 
 .olama-oracle-sync-actions {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 16px;
+}
+
+.olama-oracle-overview-hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 24px;
+    border: 1px solid #a7d9bd;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #edf8f2, #fff);
+}
+
+.olama-oracle-overview-hero.is-missing {
+    border-color: #ecd18c;
+    background: linear-gradient(135deg, #fff8e8, #fff);
+}
+
+.olama-oracle-overview-hero h2,
+.olama-oracle-overview-hero p {
+    margin: 5px 0 0;
+}
+
+.olama-oracle-overview-hero p {
+    color: var(--olama-oracle-muted);
+}
+
+.olama-oracle-kpi-grid-four {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+.olama-oracle-phase-list-wide {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.olama-oracle-advanced-sync summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    cursor: pointer;
+}
+
+.olama-oracle-advanced-sync summary span {
+    color: var(--olama-oracle-muted);
+    font-weight: 400;
+}
+
+.olama-oracle-advanced-sync[open] summary {
+    margin-bottom: 18px;
+}
+
+.olama-oracle-danger-zone {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    border-color: rgba(180, 35, 24, .3) !important;
 }
 
 .olama-oracle-sync-choice {
@@ -875,6 +936,8 @@
     }
 
     .olama-oracle-page-header,
+    .olama-oracle-overview-hero,
+    .olama-oracle-danger-zone,
     .olama-oracle-connection-card,
     .olama-oracle-progress-heading,
     .olama-oracle-progress-footer {
@@ -888,6 +951,9 @@
 }
 
 @media (max-width: 600px) {
+    .olama-oracle-kpi-grid-four {
+        grid-template-columns: 1fr !important;
+    }
     .olama-oracle-sync-actions,
     .olama-oracle-result-grid,
     .olama-oracle-validation-grid,

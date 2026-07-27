@@ -76,10 +76,11 @@ class Olama_Oracle_Student_Importer {
         return array('success' => true, 'message' => $this->summary_message('Students import finished.', $summary, $study_year, null, null), 'run_id' => $run_id, 'summary' => $summary, 'study_year' => $study_year);
     }
 
-    public function import_all_imported_families($offset = 0, $study_year = null, $limit = null) {
+    public function import_all_imported_families($offset = 0, $study_year = null, $limit = null, $run_id = null) {
         global $wpdb;
 
-        $run_id = $this->logger->start_run('all_students');
+        $own_run = !$run_id;
+        $run_id = $run_id ?: $this->logger->start_run('all_students');
         $study_year = $this->resolve_study_year($study_year);
         $family_table = $wpdb->prefix . 'olama_core_families';
         $limit = $this->family_student_batch_limit($limit);
@@ -100,7 +101,9 @@ class Olama_Oracle_Student_Importer {
             }
         }
 
-        $this->logger->finish_run($run_id);
+        if ($own_run) {
+            $this->logger->finish_run($run_id);
+        }
         $next_offset = $offset + $limit;
         $message = $this->summary_message('Students sync batch finished. Families ' . min($next_offset, $total_families) . ' / ' . $total_families . '.', $summary, $study_year, $offset, $limit);
         if ($next_offset < $total_families) {
@@ -110,8 +113,8 @@ class Olama_Oracle_Student_Importer {
         return array('success' => true, 'message' => $message, 'run_id' => $run_id, 'next_offset' => $next_offset < $total_families ? $next_offset : null, 'summary' => $summary, 'study_year' => $study_year);
     }
 
-    public function import_student_years_for_imported_families($offset = 0, $study_year = null, $limit = null) {
-        return $this->import_all_imported_families($offset, $study_year, $limit);
+    public function import_student_years_for_imported_families($offset = 0, $study_year = null, $limit = null, $run_id = null) {
+        return $this->import_all_imported_families($offset, $study_year, $limit, $run_id);
     }
 
     public function import_students_by_study_year($study_year = null) {

@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Olama Oracle Sync
- * Description: Standalone Oracle bridge sync plugin for importing Oracle families and students into Olama Core.
- * Version: 0.4.1
+ * Description: Oracle data ingestion, synchronization, diagnostics, and monitoring for Olama Core.
+ * Version: 0.6.0
  * Author: Olama
  */
 
@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('OLAMA_ORACLE_SYNC_VERSION', '0.4.1');
+define('OLAMA_ORACLE_SYNC_VERSION', '0.6.0');
 define('OLAMA_ORACLE_SYNC_FILE', __FILE__);
 define('OLAMA_ORACLE_SYNC_PATH', plugin_dir_path(__FILE__));
 define('OLAMA_ORACLE_SYNC_URL', plugin_dir_url(__FILE__));
@@ -18,6 +18,7 @@ define('OLAMA_ORACLE_SYNC_URL', plugin_dir_url(__FILE__));
 require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-migrator.php';
 
 register_activation_hook(__FILE__, array('Olama_Oracle_Migrator', 'activate'));
+register_deactivation_hook(__FILE__, array('Olama_Oracle_Migrator', 'deactivate'));
 
 add_action('plugins_loaded', 'olama_oracle_sync_bootstrap', 20);
 
@@ -149,6 +150,11 @@ function olama_oracle_sync_bootstrap() {
         return;
     }
 
+    if (get_option('olama_oracle_sync_db_version') !== OLAMA_ORACLE_SYNC_VERSION) {
+        Olama_Oracle_Migrator::create_tables();
+        update_option('olama_oracle_sync_db_version', OLAMA_ORACLE_SYNC_VERSION);
+    }
+
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-settings.php';
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-api-client.php';
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-sync-logger.php';
@@ -158,7 +164,11 @@ function olama_oracle_sync_bootstrap() {
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-transport-master-importer.php';
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-student-importer.php';
     require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-validator.php';
+    require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-job-manager.php';
     require_once OLAMA_ORACLE_SYNC_PATH . 'admin/class-olama-oracle-admin.php';
+
+    $jobs = new Olama_Oracle_Job_Manager();
+    $jobs->init();
 
     if (is_admin()) {
         $admin = new Olama_Oracle_Admin();

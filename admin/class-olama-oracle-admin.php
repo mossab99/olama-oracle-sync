@@ -7,10 +7,12 @@ if (!defined('ABSPATH')) {
 class Olama_Oracle_Admin {
     private $logger;
     private $client;
+    private $jobs;
 
     public function __construct() {
         $this->logger = new Olama_Oracle_Sync_Logger();
         $this->client = new Olama_Oracle_Api_Client();
+        $this->jobs = new Olama_Oracle_Job_Manager();
     }
 
     public function init() {
@@ -24,13 +26,18 @@ class Olama_Oracle_Admin {
         add_action('wp_ajax_olama_oracle_update_full_sync_progress', array($this, 'ajax_update_full_sync_progress'));
         add_action('wp_ajax_olama_oracle_reset_full_sync_progress', array($this, 'ajax_reset_full_sync_progress'));
         add_action('wp_ajax_olama_oracle_test_api_endpoint', array($this, 'ajax_test_api_endpoint'));
+        add_action('wp_ajax_olama_oracle_start_sync_job', array($this, 'ajax_start_sync_job'));
+        add_action('wp_ajax_olama_oracle_sync_job_status', array($this, 'ajax_sync_job_status'));
     }
 
     public function register_menu() {
         add_menu_page('Olama Oracle Sync', 'Olama Oracle Sync', 'olama_access_oracle_sync', 'olama-oracle-sync', array($this, 'dashboard'), 'dashicons-update-alt', 57);
-        add_submenu_page('olama-oracle-sync', 'Dashboard', 'Dashboard', 'olama_access_oracle_sync', 'olama-oracle-sync', array($this, 'dashboard'));
+        add_submenu_page('olama-oracle-sync', 'Overview', 'Overview', 'olama_access_oracle_sync', 'olama-oracle-sync', array($this, 'dashboard'));
+        add_submenu_page('olama-oracle-sync', 'Synchronization', 'Synchronization', 'olama_access_oracle_sync', 'olama-oracle-sync-jobs', array($this, 'manual_sync'));
+        add_submenu_page('olama-oracle-sync', 'Run History', 'Run History', 'olama_access_oracle_sync', 'olama-oracle-sync-runs', array($this, 'sync_runs'));
+        add_submenu_page('olama-oracle-sync', 'Data Quality', 'Data Quality', 'olama_access_oracle_sync', 'olama-oracle-sync-validation', array($this, 'validation'));
+        add_submenu_page('olama-oracle-sync', 'Bridge Diagnostics', 'Bridge Diagnostics', 'olama_access_oracle_sync', 'olama-oracle-sync-api-map', array($this, 'api_map'));
         add_submenu_page('olama-oracle-sync', 'Settings', 'Settings', 'olama_access_oracle_sync', 'olama-oracle-sync-settings', array($this, 'settings'));
-        add_submenu_page('olama-oracle-sync', 'API Map', 'API Map', 'olama_access_oracle_sync', 'olama-oracle-sync-api-map', array($this, 'api_map'));
     }
 
     public function handle_actions() {
@@ -113,6 +120,9 @@ class Olama_Oracle_Admin {
             $this->logger->log_item($run_id, 'validation', null, null, null, 'report', 'success', 'Validation report generated.');
             $this->logger->finish_run($run_id);
             $message = 'Validation report refreshed.';
+        } elseif ('purge_raw_payloads' === $action) {
+            $deleted = $this->logger->purge_all_payloads();
+            $message = sprintf('Deleted %d stored raw payloads.', $deleted);
         }
 
         $redirect = add_query_arg(array(
@@ -125,82 +135,60 @@ class Olama_Oracle_Admin {
     }
 
     public function dashboard() {
-        global $wpdb;
-
         $study_year = $this->get_default_study_year();
         echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page olama-oracle-sync-page">';
-        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">Olama Oracle Sync</h1><p class="olama-oracle-page-subtitle">مزامنة بيانات العائلات والطلاب من Oracle ERP ومتابعة جودة البيانات من مكان واحد.</p></div>';
-        echo '<div class="olama-oracle-header-actions"><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-settings')) . '">الإعدادات</a><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="#olama-oracle-recent-runs">آخر العمليات</a></div></div>';
+        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">Olama Oracle Sync</h1><p class="olama-oracle-page-subtitle">تشغيل ومراقبة تدفق بيانات Oracle إلى النسخة المعتمدة في Olama Core.</p></div>';
+        echo '<div class="olama-oracle-header-actions"><a class="button button-primary olama-oracle-btn olama-oracle-btn-primary" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-jobs')) . '">تشغيل المزامنة</a><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-runs')) . '">سجل العمليات</a></div></div>';
         $this->notice();
         echo '<div class="olama-oracle-stack">';
-        $this->simple_sync_panel($study_year);
+        $this->dashboard_overview($study_year);
         $this->dashboard_validation_card();
         $this->dashboard_recent_runs();
         echo '</div></div></div>';
-        return;
-
-        $runs = $wpdb->prefix . 'olama_oracle_sync_runs';
-        $last = $wpdb->get_row("SELECT * FROM `" . esc_sql($runs) . "` ORDER BY id DESC LIMIT 1", ARRAY_A);
-        echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page">';
-        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">Olama Oracle Sync</h1><p class="olama-oracle-page-subtitle">إدارة مزامنة بيانات Oracle ERP إلى جداول Olama Core المحلية</p></div></div>';
-        $this->notice();
-        echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><h2 class="olama-oracle-section-title">حالة الربط</h2></div>';
-        echo '<div class="olama-oracle-kpi-grid">';
-        echo '<div class="olama-oracle-kpi"><span class="olama-oracle-kpi-label">Olama Core</span><strong class="olama-oracle-kpi-value">' . esc_html(defined('OLAMA_CORE_VERSION') ? 'Active' : 'Missing') . '</strong></div>';
-        echo '<div class="olama-oracle-kpi"><span class="olama-oracle-kpi-label">Sync mode</span><strong class="olama-oracle-kpi-value">' . esc_html(Olama_Oracle_Settings::get('sync_mode') === 'manual' ? 'Manual' : 'Scheduled') . '</strong></div>';
-        echo '<div class="olama-oracle-kpi"><span class="olama-oracle-kpi-label">Last run</span><strong class="olama-oracle-kpi-value">' . esc_html($last ? '#' . $last['id'] . ' ' . $last['status'] : 'None') . '</strong></div>';
-        echo '</div></section></div></div>';
     }
 
     public function settings() {
         $settings = Olama_Oracle_Settings::get();
         echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page">';
-        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">Oracle Sync Settings</h1><p class="olama-oracle-page-subtitle">إعدادات الاتصال والمزامنة الافتراضية مع Oracle Bridge</p></div></div>';
+        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">إعدادات Oracle Sync</h1><p class="olama-oracle-page-subtitle">إعداد الاتصال، الجدولة، الأداء، وسياسة الاحتفاظ بالبيانات التشخيصية.</p></div></div>';
         $this->notice();
-        echo '<section class="olama-oracle-section"><form method="post" class="olama-oracle-settings-form">';
+        echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><div><h2 class="olama-oracle-section-title">الاتصال والتشغيل</h2><p class="olama-oracle-section-note">مفتاح API مخفي، والسنة الدراسية تدار من Olama Core.</p></div>';
+        echo '<form method="post">';
+        wp_nonce_field('olama_oracle_action');
+        echo '<input type="hidden" name="olama_oracle_action" value="test_connection">';
+        submit_button('اختبار الاتصال', 'secondary olama-oracle-btn olama-oracle-btn-secondary', 'submit', false);
+        echo '</form></div><form method="post" class="olama-oracle-settings-form">';
         wp_nonce_field('olama_oracle_action');
         echo '<input type="hidden" name="olama_oracle_action" value="save_settings">';
         echo '<table class="form-table olama-oracle-form-table"><tbody>';
-        $this->field('Oracle Bridge Base URL', 'base_url', $settings['base_url']);
-        $this->field('API Key', 'api_key', $settings['api_key'], 'password');
-        $this->field('Default Study Year', 'default_study_year', $settings['default_study_year']);
-        $this->field('Request Timeout', 'request_timeout', $settings['request_timeout'], 'number');
-        $this->field('Batch Size', 'batch_size', $settings['batch_size'], 'number');
-        echo '<tr><th>Store Raw Payloads</th><td><select name="settings[store_raw_payloads]"><option value="yes"' . selected($settings['store_raw_payloads'], 'yes', false) . '>Yes</option><option value="no"' . selected($settings['store_raw_payloads'], 'no', false) . '>No</option></select></td></tr>';
-        echo '<tr><th>Sync Mode</th><td><select name="settings[sync_mode]"><option value="manual"' . selected($settings['sync_mode'], 'manual', false) . '>Manual Only</option><option value="scheduled_read_only"' . selected($settings['sync_mode'], 'scheduled_read_only', false) . '>Scheduled Read-Only</option></select></td></tr>';
+        $this->field('رابط Oracle Bridge', 'base_url', $settings['base_url']);
+        echo '<tr><th><label for="olama_api_key">مفتاح API</label></th><td><input class="regular-text" id="olama_api_key" type="password" name="settings[api_key]" value="" autocomplete="new-password" placeholder="اتركه فارغاً للاحتفاظ بالمفتاح الحالي"><p class="description">المفتاح الحالي لا يعرض في الصفحة.</p></td></tr>';
+        echo '<tr><th>السنة الدراسية النشطة</th><td><input class="regular-text" type="text" value="' . esc_attr($this->get_default_study_year()) . '" readonly disabled><p class="description">تدار من <a href="' . esc_url(admin_url('admin.php?page=olama-core-academic-calendar')) . '">Olama Core ← التقويم الأكاديمي</a>.</p></td></tr>';
+        echo '<tr><th>وضع التشغيل</th><td><select name="settings[sync_mode]"><option value="manual"' . selected($settings['sync_mode'], 'manual', false) . '>يدوي فقط</option><option value="scheduled"' . selected($settings['sync_mode'], 'scheduled', false) . '>مزامنة شاملة مجدولة</option></select></td></tr>';
+        echo '<tr><th>تكرار الجدولة</th><td><select name="settings[schedule_frequency]"><option value="daily"' . selected($settings['schedule_frequency'], 'daily', false) . '>يومياً</option><option value="twicedaily"' . selected($settings['schedule_frequency'], 'twicedaily', false) . '>مرتين يومياً</option><option value="hourly"' . selected($settings['schedule_frequency'], 'hourly', false) . '>كل ساعة</option></select></td></tr>';
+        $this->field('مهلة الطلب بالثواني', 'request_timeout', $settings['request_timeout'], 'number');
+        $this->field('حجم الدفعة', 'batch_size', $settings['batch_size'], 'number');
+        echo '<tr><th>حفظ الاستجابات الخام</th><td><select name="settings[store_raw_payloads]"><option value="no"' . selected($settings['store_raw_payloads'], 'no', false) . '>لا — موصى به</option><option value="yes"' . selected($settings['store_raw_payloads'], 'yes', false) . '>نعم، للتشخيص المؤقت</option></select><p class="description">قد تحتوي الاستجابات على بيانات شخصية ومالية. فعّلها فقط عند الحاجة للتشخيص.</p></td></tr>';
+        $this->field('مدة الاحتفاظ بالاستجابات (أيام)', 'raw_payload_retention_days', $settings['raw_payload_retention_days'], 'number');
         echo '</tbody></table>';
-        submit_button('Save Settings', 'primary olama-oracle-btn olama-oracle-btn-primary');
+        submit_button('حفظ الإعدادات', 'primary olama-oracle-btn olama-oracle-btn-primary');
+        echo '</form></section>';
+        echo '<section class="olama-oracle-section olama-oracle-danger-zone"><div><h2 class="olama-oracle-section-title">البيانات التشخيصية المخزنة</h2><p class="olama-oracle-section-note">يحذف النظام تلقائياً الاستجابات الأقدم من مدة الاحتفاظ المحددة.</p></div><form method="post">';
+        wp_nonce_field('olama_oracle_action');
+        echo '<input type="hidden" name="olama_oracle_action" value="purge_raw_payloads">';
+        submit_button('حذف جميع الاستجابات الخام الآن', 'delete olama-oracle-btn', 'submit', false, array('onclick' => "return confirm('حذف جميع الاستجابات الخام المخزنة؟');"));
         echo '</form></section></div></div>';
     }
 
     public function manual_sync() {
         $study_year = $this->get_default_study_year();
         echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page olama-oracle-sync-page">';
-        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">مزامنة Oracle</h1><p class="olama-oracle-page-subtitle">تحديث العائلات والطلاب وبيانات السنة الدراسية من Oracle ERP إلى Olama Core.</p></div>';
-        echo '<div class="olama-oracle-header-actions"><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-settings')) . '">الإعدادات</a><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-runs')) . '">سجل المزامنة</a></div></div>';
+        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">تشغيل المزامنة</h1><p class="olama-oracle-page-subtitle">ابدأ عملية دائمة على الخادم، ثم غادر الصفحة أو عد لاحقاً دون إيقافها.</p></div>';
+        echo '<div class="olama-oracle-header-actions"><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-runs')) . '">سجل العمليات</a><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-api-map')) . '">تشخيص الربط</a></div></div>';
         $this->notice();
         echo '<div class="olama-oracle-stack">';
         $this->simple_sync_panel($study_year);
         echo '</div></div></div>';
-        return;
-
-        echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page">';
-        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">Manual Oracle Sync</h1><p class="olama-oracle-page-subtitle">تشغيل ومتابعة مزامنة العائلات والطلاب وسنوات الطلاب من Oracle ERP</p></div></div>';
-        $this->notice();
-        echo '<div class="olama-oracle-stack">';
-        $this->full_sync_panel($study_year);
-        echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header">';
-        echo '<h2>مزامنة متقدمة بالدفعات</h2>';
-        echo '<p class="olama-oracle-section-note">أدوات يدوية للتشخيص أو تشغيل دفعة محددة فقط.</p></div><div class="olama-oracle-action-grid">';
-        $this->action_form('Test Oracle Connection', 'test_connection');
-        $this->action_form('Import All Families', 'import_families');
-        $this->action_form('Import One Family by Oracle FAMILY_ID', 'import_one_family', true);
-        $this->action_form('Import Students for One Family', 'import_family_students', true, false, true, $study_year);
-        $this->action_form('Import Students for Imported Families Batch', 'import_all_students', false, true, true, $study_year);
-        $this->action_form('Import Student Years for Imported Families Batch', 'import_student_years', false, true, true, $study_year);
-        $this->action_form('Import Students by Study Year', 'import_students_by_study_year', false, false, true, $study_year);
-        $this->action_form('Run Validation Report', 'run_validation');
-        echo '</div></section></div></div></div>';
     }
 
     public function enqueue_assets($hook) {
@@ -230,7 +218,7 @@ class Olama_Oracle_Admin {
             return;
         }
 
-        if (!in_array($hook, array('toplevel_page_olama-oracle-sync', 'olama-oracle-sync_page_olama-oracle-sync-manual'), true)) {
+        if (!in_array($hook, array('toplevel_page_olama-oracle-sync', 'olama-oracle-sync_page_olama-oracle-sync-jobs'), true)) {
             return;
         }
 
@@ -253,6 +241,32 @@ class Olama_Oracle_Admin {
 
     public function ajax_run_students_full_sync_batch() {
         $this->ajax_run_full_sync_batch('students');
+    }
+
+    public function ajax_start_sync_job() {
+        $this->verify_full_sync_ajax();
+        $scope = isset($_POST['scope']) ? sanitize_key(wp_unslash($_POST['scope'])) : 'complete';
+        $study_year = $this->sanitize_study_year_from_request();
+        $job = $this->jobs->start_job($scope, $study_year);
+        if (is_wp_error($job)) {
+            $data = array('message' => $job->get_error_message());
+            $error_data = $job->get_error_data();
+            if (is_array($error_data)) {
+                $data = array_merge($data, $error_data);
+            }
+            wp_send_json_error($data, 409);
+        }
+        wp_send_json_success($job);
+    }
+
+    public function ajax_sync_job_status() {
+        $this->verify_full_sync_ajax();
+        $job_id = isset($_POST['job_id']) ? absint($_POST['job_id']) : 0;
+        $job = $this->jobs->get_job($job_id);
+        if (!$job) {
+            wp_send_json_error(array('message' => 'Synchronization job not found.'), 404);
+        }
+        wp_send_json_success($job);
     }
 
     public function ajax_start_all_sync() {
@@ -384,14 +398,11 @@ class Olama_Oracle_Admin {
             $groups[$endpoint['group']] = $endpoint['group_label'];
         }
         $default_year = $this->get_default_study_year();
-        if ('' === $default_year) {
-            $default_year = '2026-2027';
-        }
 
         echo '<div class="wrap olama-oracle-admin" dir="rtl"><div class="olama-oracle-page olama-api-map-page">';
-        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">API Map</h1><p class="olama-oracle-page-subtitle">دليل واختبار واجهات Oracle API Bridge وربطها الحالي أو المستقبلي مع Olama Core.</p></div>';
-        echo '<div class="olama-oracle-header-actions"><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-settings')) . '">Settings</a></div></div>';
-        echo '<section class="olama-oracle-section olama-api-map-intro"><div><strong>Read-only diagnostics</strong><p>Tests validate connectivity and response contracts only. They never synchronize or modify Olama Core data. Oracle Sync is the sole Bridge consumer; domain plugins read the canonical Core tables.</p></div><span class="dashicons dashicons-shield-alt"></span></section>';
+        echo '<div class="olama-oracle-page-header"><div><h1 class="olama-oracle-page-title">تشخيص Oracle Bridge</h1><p class="olama-oracle-page-subtitle">كتالوج واجهات الربط واختبار الاتصال وعقود الاستجابة دون تعديل بيانات Olama Core.</p></div>';
+        echo '<div class="olama-oracle-header-actions"><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-settings')) . '">الإعدادات</a></div></div>';
+        echo '<section class="olama-oracle-section olama-api-map-intro"><div><strong>تشخيص للقراءة فقط</strong><p>الاختبارات لا تشغّل المزامنة ولا تعدّل البيانات. استخدم اختبار واجهة واحدة أولاً؛ اختبار الجميع يرسل عدداً كبيراً من الطلبات إلى Bridge.</p></div><span class="dashicons dashicons-shield-alt"></span></section>';
         echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><div><h2 class="olama-oracle-section-title">Test parameters</h2><p class="olama-oracle-section-note">Sample identifiers are used only for endpoints that require them.</p></div></div>';
         echo '<div class="olama-api-map-controls">';
         echo '<label><span>Family number</span><input id="olama-api-family-id" type="number" min="1" value="1161"></label>';
@@ -641,16 +652,30 @@ class Olama_Oracle_Admin {
             $this->table($rows, array('entity_type' => 'Entity Type', 'entity_uid' => 'Entity UID', 'oracle_family_id' => 'Oracle Family ID', 'oracle_student_id' => 'Oracle Student ID', 'operation' => 'Operation', 'status' => 'Status', 'message' => 'Message', 'created_at' => 'Created At'));
             echo '</section>';
         } else {
+            $this->jobs_history_table();
             $rows = $wpdb->get_results('SELECT * FROM `' . esc_sql($runs) . '` ORDER BY id DESC LIMIT 100', ARRAY_A);
             foreach ($rows as &$row) {
                 $row['view_items'] = '<a href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-runs&run_id=' . absint($row['id']))) . '">View Items</a>';
             }
             unset($row);
-            echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><h2 class="olama-oracle-section-title">آخر عمليات المزامنة</h2></div>';
+            echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><div><h2 class="olama-oracle-section-title">السجلات الفنية للمراحل</h2><p class="olama-oracle-section-note">تفاصيل الاستيراد الداخلية لكل مرحلة داخل العمليات أعلاه.</p></div></div>';
             $this->table($rows, array('id' => 'Run ID', 'sync_type' => 'Sync Type', 'status' => 'Status', 'started_at' => 'Started At', 'finished_at' => 'Finished At', 'records_seen' => 'Records Seen', 'records_created' => 'Created', 'records_updated' => 'Updated', 'records_skipped' => 'Skipped', 'records_failed' => 'Failed', 'error_summary' => 'Error Summary', 'view_items' => 'View Items'), true);
             echo '</section>';
         }
         echo '</div></div>';
+    }
+
+    private function jobs_history_table() {
+        $jobs = $this->jobs->recent_jobs(50);
+        echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><div><h2 class="olama-oracle-section-title">عمليات المزامنة</h2><p class="olama-oracle-section-note">كل صف يمثل عملية واحدة تشمل مراحلها ودفعاتها.</p></div></div><div class="olama-oracle-table-wrap"><table class="olama-oracle-table olama-oracle-runs-table"><thead><tr><th>العملية</th><th>النطاق</th><th>السنة</th><th>الحالة</th><th>المرحلة</th><th>التقدم</th><th>النتيجة</th><th>البدء</th></tr></thead><tbody>';
+        if (!$jobs) {
+            echo '<tr><td colspan="8" class="olama-oracle-empty-state">لا توجد عمليات بالنظام الجديد حتى الآن.</td></tr>';
+        }
+        foreach ($jobs as $job) {
+            $counts = $job['counts'];
+            echo '<tr><td><strong>#' . esc_html($job['id']) . '</strong></td><td>' . esc_html('complete' === $job['scope'] ? 'شاملة' : 'العائلات والطلاب') . '</td><td>' . esc_html($job['study_year']) . '</td><td><span class="olama-oracle-status-pill status-' . esc_attr($job['status']) . '">' . esc_html($this->job_status_label($job['status'])) . '</span></td><td>' . esc_html($job['current_phase']) . '</td><td>' . esc_html($job['progress_percentage']) . '%</td><td><div class="olama-oracle-run-result"><span class="is-created">+' . esc_html($counts['created']) . '</span><span class="is-updated">' . esc_html($counts['updated']) . ' محدث</span><span>' . esc_html($counts['skipped']) . ' بدون تغيير</span>' . ($counts['failed'] ? '<span class="is-failed">' . esc_html($counts['failed']) . ' فشل</span>' : '') . '</div></td><td>' . esc_html(mysql2date('Y-m-d H:i', $job['started_at'])) . '</td></tr>';
+        }
+        echo '</tbody></table></div></section>';
     }
 
     public function validation() {
@@ -682,6 +707,9 @@ class Olama_Oracle_Admin {
     private function simple_sync_panel($study_year) {
         $settings = Olama_Oracle_Settings::get();
         $configured = !empty($settings['base_url']) && !empty($settings['api_key']);
+
+        $this->render_job_sync_panel($study_year, $configured);
+        return;
 
         echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><div><h2 class="olama-oracle-section-title">Employee master data</h2><p class="olama-oracle-section-note">Import Oracle employees whose status is exactly مستمر into OLAMA Core. This does not create WordPress accounts.</p></div></div>';
         echo '<form method="post" action="' . esc_url(admin_url('admin.php?page=olama-oracle-sync')) . '">';
@@ -744,6 +772,40 @@ class Olama_Oracle_Admin {
         echo '</section>';
     }
 
+    private function render_job_sync_panel($study_year, $configured) {
+        $active = $this->jobs->active_job();
+        echo '<section class="olama-oracle-connection-card ' . ($configured ? 'is-ready' : 'is-missing') . '">';
+        echo '<div><span class="olama-oracle-status-dot" aria-hidden="true"></span><strong>' . esc_html($configured ? 'Oracle Bridge جاهز' : 'إعداد الاتصال غير مكتمل') . '</strong><p>' . esc_html($configured ? 'السنة النشطة: ' . $study_year . '. يمكن تشغيل عملية دائمة على الخادم.' : 'أدخل رابط Oracle Bridge ومفتاح API من صفحة الإعدادات.') . '</p></div>';
+        echo '<a class="button olama-oracle-btn olama-oracle-btn-secondary" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-settings')) . '">' . esc_html($configured ? 'مراجعة الاتصال' : 'إعداد الاتصال') . '</a></section>';
+
+        echo '<section class="olama-oracle-sync-actions" aria-label="نطاق المزامنة">';
+        echo '<article class="olama-oracle-sync-choice olama-oracle-sync-choice-primary"><div class="olama-oracle-choice-icon dashicons dashicons-update-alt" aria-hidden="true"></div><div><span class="olama-oracle-eyebrow">المسار الموصى به</span><h2>مزامنة Oracle الشاملة</h2><p>العائلات، الطلاب والملفات المرتبطة، الموظفون، الهيكل الأكاديمي، بيانات النقل الأساسية، ثم فحص الجودة.</p></div>';
+        echo '<label for="olama-oracle-all-year">السنة الدراسية</label><input id="olama-oracle-all-year" type="text" value="' . esc_attr($study_year) . '" data-olama-sync-year readonly>';
+        echo '<button type="button" class="button button-primary olama-oracle-btn olama-oracle-btn-primary" data-olama-start-job="complete"' . (!$configured || $active ? ' disabled' : '') . '><span class="dashicons dashicons-controls-play"></span> تشغيل المزامنة الشاملة</button></article>';
+
+        echo '<article class="olama-oracle-sync-choice"><div class="olama-oracle-choice-icon dashicons dashicons-groups" aria-hidden="true"></div><div><span class="olama-oracle-eyebrow">نطاق أسرع</span><h2>العائلات والطلاب فقط</h2><p>تحديث دليل العائلات، الطلاب، التسجيل، البيانات المالية، وتعيينات النقل، ثم فحص الجودة.</p></div>';
+        echo '<button type="button" class="button olama-oracle-btn olama-oracle-btn-secondary" data-olama-start-job="family_pipeline"' . (!$configured || $active ? ' disabled' : '') . '>تشغيل مسار العائلات</button></article>';
+
+        echo '<article class="olama-oracle-sync-choice"><div class="olama-oracle-choice-icon dashicons dashicons-admin-users" aria-hidden="true"></div><div><span class="olama-oracle-eyebrow">تحديث محدد</span><h2>مزامنة عائلة واحدة</h2><p>تحديث عائلة وأبنائها والبيانات المرتبطة بها دون تشغيل عملية شاملة.</p></div><div class="olama-oracle-single-fields"><label for="olama-oracle-family-id">رقم العائلة في Oracle</label><input id="olama-oracle-family-id" type="text" inputmode="numeric" data-olama-family-id><label for="olama-oracle-single-year">السنة الدراسية</label><input id="olama-oracle-single-year" type="text" value="' . esc_attr($study_year) . '" data-olama-single-year readonly></div>';
+        echo '<button type="button" class="button olama-oracle-btn olama-oracle-btn-secondary" data-olama-sync-one' . (!$configured || $active ? ' disabled' : '') . '>مزامنة العائلة</button></article></section>';
+
+        echo '<section class="olama-oracle-progress-card' . ($active ? ' is-running' : '') . '" data-olama-progress-card data-active-job="' . esc_attr($active ? $active['id'] : '') . '" aria-live="polite">';
+        echo '<div class="olama-oracle-progress-heading"><div><span class="olama-oracle-eyebrow">حالة العملية</span><h2 data-olama-progress-title>' . esc_html($active ? 'العملية #' . $active['id'] . ' قيد التشغيل' : 'جاهز للمزامنة') . '</h2><p data-olama-full-sync-message>' . esc_html($active ? $active['message'] : 'اختر نطاق المزامنة للبدء.') . '</p></div><strong class="olama-oracle-progress-percent" data-olama-progress-percent>' . esc_html($active ? $active['progress_percentage'] : 0) . '%</strong></div>';
+        echo '<div class="olama-oracle-progress"><div class="olama-oracle-progress-bar" data-olama-full-sync-bar style="width:' . esc_attr($active ? $active['progress_percentage'] : 0) . '%"></div></div>';
+        echo '<div class="olama-oracle-phase-list olama-oracle-phase-list-wide">';
+        foreach (array('families' => 'العائلات', 'students' => 'الطلاب والملفات', 'employees' => 'الموظفون', 'academic' => 'الأكاديمي', 'transportation' => 'النقل', 'validation' => 'فحص الجودة') as $phase => $label) {
+            echo '<span data-phase="' . esc_attr($phase) . '"><b>' . esc_html($label) . '</b></span>';
+        }
+        echo '</div><div class="olama-oracle-result-grid"><div><span>السجلات المعالجة</span><strong data-olama-job-count="seen">0</strong></div><div><span>المضافة</span><strong data-olama-job-count="created">0</strong></div><div><span>المحدثة</span><strong data-olama-job-count="updated">0</strong></div><div><span>بدون تغيير</span><strong data-olama-job-count="skipped">0</strong></div><div><span>الأخطاء</span><strong data-olama-job-count="failed">0</strong></div></div>';
+        echo '<div class="olama-oracle-progress-footer"><span data-olama-last-family></span><a class="button olama-oracle-btn olama-oracle-btn-ghost" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-runs')) . '">فتح سجل العمليات</a></div></section>';
+
+        echo '<details class="olama-oracle-section olama-oracle-advanced-sync"><summary><strong>مزامنة مجال محدد</strong><span>أدوات تشغيل متقدمة للموظفين أو الهيكل الأكاديمي أو النقل فقط.</span></summary><div class="olama-oracle-action-grid">';
+        $this->action_form('تحديث الموظفين النشطين', 'import_employees');
+        $this->action_form('تحديث الهيكل الأكاديمي', 'import_academic_info', false, false, true, $study_year);
+        $this->action_form('تحديث بيانات النقل الأساسية', 'import_transport_master', false, false, true, $study_year);
+        echo '</div></details>';
+    }
+
     private function dashboard_validation_card() {
         $report = (new Olama_Oracle_Validator())->report();
         $failed_items = isset($report['Last failed sync items']) && is_array($report['Last failed sync items']) ? $report['Last failed sync items'] : array();
@@ -759,7 +821,7 @@ class Olama_Oracle_Admin {
 
         echo '<section id="olama-oracle-validation" class="olama-oracle-dashboard-card olama-oracle-validation-card">';
         echo '<div class="olama-oracle-section-header"><div><span class="olama-oracle-eyebrow">جودة البيانات</span><h2 class="olama-oracle-section-title">التحقق من بيانات Olama Core</h2><p class="olama-oracle-section-note">فحص العلاقات والتكرار والحقول الأساسية بعد المزامنة.</p></div>';
-        echo '<a class="button olama-oracle-btn olama-oracle-btn-secondary" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync#olama-oracle-validation')) . '"><span class="dashicons dashicons-update"></span> تحديث الفحص</a></div>';
+        echo '<a class="button olama-oracle-btn olama-oracle-btn-secondary" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-validation')) . '"><span class="dashicons dashicons-search"></span> فتح تقرير الجودة</a></div>';
         echo '<div class="olama-oracle-validation-summary ' . (0 === $issue_total ? 'is-healthy' : 'has-warnings') . '"><span class="dashicons ' . (0 === $issue_total ? 'dashicons-yes-alt' : 'dashicons-warning') . '"></span><div><strong>' . esc_html(0 === $issue_total ? 'البيانات الأساسية سليمة' : number_format_i18n($issue_total) . ' ملاحظة تحتاج للمراجعة') . '</strong><p>' . esc_html(0 === $issue_total ? 'لم يكتشف الفحص مشاكل في العلاقات أو التكرار أو الحقول الأساسية.' : 'المزامنة تعمل، لكن بعض السجلات المحلية تحتاج إلى مراجعة أو استكمال.') . '</p></div></div>';
         echo '<div class="olama-oracle-validation-grid">';
         foreach (array(
@@ -777,6 +839,30 @@ class Olama_Oracle_Admin {
             echo '<p class="olama-oracle-validation-note"><span class="dashicons dashicons-info-outline"></span> يوجد ' . esc_html(number_format_i18n(count($failed_items))) . ' عنصر فشل حديثاً في سجل المزامنة.</p>';
         }
         echo '</section>';
+    }
+
+    private function dashboard_overview($study_year) {
+        $settings = Olama_Oracle_Settings::get();
+        $configured = !empty($settings['base_url']) && !empty($settings['api_key']);
+        $active = $this->jobs->active_job();
+        $recent = $this->jobs->recent_jobs(1);
+        $last = $recent ? $recent[0] : null;
+        $mode = 'scheduled' === $settings['sync_mode'] ? 'مجدولة' : 'يدوية';
+
+        echo '<section class="olama-oracle-overview-hero ' . ($configured ? 'is-ready' : 'is-missing') . '"><div><span class="olama-oracle-eyebrow">حالة التكامل</span><h2>' . esc_html($configured ? 'Oracle Bridge متصل بالإعدادات' : 'يجب استكمال إعداد Oracle Bridge') . '</h2><p>' . esc_html($active ? 'العملية #' . $active['id'] . ' تعمل الآن: ' . $active['message'] : 'لا توجد عملية مزامنة نشطة حالياً.') . '</p></div><a class="button button-primary olama-oracle-btn olama-oracle-btn-primary" href="' . esc_url(admin_url('admin.php?page=olama-oracle-sync-jobs')) . '">' . esc_html($active ? 'متابعة العملية' : 'تشغيل مزامنة جديدة') . '</a></section>';
+        echo '<section class="olama-oracle-kpi-grid olama-oracle-kpi-grid-four">';
+        foreach (array(
+            array('السنة النشطة', $study_year ?: 'غير محددة'),
+            array('وضع التشغيل', $mode),
+            array('آخر عملية', $last ? '#' . $last['id'] : 'لا يوجد'),
+            array('حالة آخر عملية', $last ? $this->job_status_label($last['status']) : '—'),
+        ) as $metric) {
+            echo '<div class="olama-oracle-kpi"><span class="olama-oracle-kpi-label">' . esc_html($metric[0]) . '</span><strong class="olama-oracle-kpi-value">' . esc_html($metric[1]) . '</strong></div>';
+        }
+        echo '</section>';
+        if ($active) {
+            echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><div><h2 class="olama-oracle-section-title">العملية النشطة #' . esc_html($active['id']) . '</h2><p class="olama-oracle-section-note">' . esc_html($active['message']) . '</p></div><strong>' . esc_html($active['progress_percentage']) . '%</strong></div><div class="olama-oracle-progress"><div class="olama-oracle-progress-bar" style="width:' . esc_attr($active['progress_percentage']) . '%"></div></div></section>';
+        }
     }
 
     private function dashboard_recent_runs() {
@@ -846,6 +932,17 @@ class Olama_Oracle_Admin {
         }
 
         return floor($seconds / 60) . ' د ' . ($seconds % 60) . ' ث';
+    }
+
+    private function job_status_label($status) {
+        $labels = array(
+            'queued' => 'بانتظار التشغيل',
+            'running' => 'قيد التشغيل',
+            'completed' => 'مكتملة',
+            'completed_with_errors' => 'مكتملة مع ملاحظات',
+            'failed' => 'فشلت',
+        );
+        return isset($labels[$status]) ? $labels[$status] : $status;
     }
 
     private function full_sync_panel($study_year) {
