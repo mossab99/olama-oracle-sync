@@ -10,9 +10,17 @@ class Olama_Oracle_Settings {
 
 class Olama_Oracle_Api_Client {
     public $offsets = array();
+    public $unpaginated = false;
 
     public function get_families($args) {
         $this->offsets[] = (int) $args['offset'];
+        if ($this->unpaginated) {
+            return array('success' => true, 'data' => array('families' => array(
+                array('family_id' => 20),
+                array('family_id' => 21),
+                array('family_id' => 22),
+            )));
+        }
         if (0 === (int) $args['offset']) {
             return array('success' => true, 'data' => array('families' => array(
                 array('family_id' => 10),
@@ -60,6 +68,16 @@ $result = (new Olama_Oracle_Family_Importer($client, $logger))->import_all();
 
 if (empty($result['success']) || $client->offsets !== array(0, 2) || olama_core()->repository->ids !== array(10, 11, 12) || !$logger->finished) {
     fwrite(STDERR, "Family importer batching: FAIL\n");
+    exit(1);
+}
+
+$client = new Olama_Oracle_Api_Client();
+$client->unpaginated = true;
+$logger = new Olama_Oracle_Sync_Logger();
+$result = (new Olama_Oracle_Family_Importer($client, $logger))->import_all();
+
+if (empty($result['success']) || $client->offsets !== array(0) || !$logger->finished || array_slice(olama_core()->repository->ids, -3) !== array(20, 21, 22)) {
+    fwrite(STDERR, "Unpaginated family response: FAIL\n");
     exit(1);
 }
 

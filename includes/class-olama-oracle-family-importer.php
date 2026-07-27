@@ -66,12 +66,18 @@ class Olama_Oracle_Family_Importer {
 
         $received = count($families);
         $first_family_id = $received && is_array($families[0]) ? $this->first($families[0], array('family_id', 'oracle_family_id')) : '';
+
+        // Some Oracle Bridge deployments return the complete family directory
+        // and ignore the requested limit/offset. An oversized response is
+        // therefore a complete, unpaginated result; requesting another page
+        // would only import the same directory again.
+        $done = $received < $limit || $received > $limit;
         return array(
             'success' => true,
             'message' => 'Families batch finished.',
             'records_seen' => $received,
             'next_offset' => $offset + $received,
-            'done' => $received < $limit,
+            'done' => $done,
             'first_family_id' => $first_family_id,
             'run_id' => (int) $run_id,
         );
