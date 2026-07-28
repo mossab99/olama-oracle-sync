@@ -22,6 +22,17 @@ register_deactivation_hook(__FILE__, array('Olama_Oracle_Migrator', 'deactivate'
 
 add_action('plugins_loaded', 'olama_oracle_sync_bootstrap', 20);
 
+add_filter('olama_core_sync_family_contacts', 'olama_oracle_sync_provide_family_contacts');
+add_filter('olama_core_sync_available', 'olama_oracle_sync_report_availability', 10, 2);
+
+function olama_oracle_sync_provide_family_contacts($result) {
+    return olama_oracle_sync_refresh_family_contacts();
+}
+
+function olama_oracle_sync_report_availability($available, $target) {
+    return 'family_contacts' === $target ? true : $available;
+}
+
 function olama_oracle_sync_get_api_config() {
     if (!class_exists('Olama_Oracle_Settings')) {
         require_once OLAMA_ORACLE_SYNC_PATH . 'includes/class-olama-oracle-settings.php';
