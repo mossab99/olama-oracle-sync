@@ -37,7 +37,10 @@ class Olama_Oracle_Transport_Master_Importer {
         }
 
         $buses = $this->list_from($buses_response['data'], 'buses');
-        $regions = $this->list_from($regions_response['data'], 'regions');
+        $regions = array_values(array_filter(
+            $this->list_from($regions_response['data'], 'regions'),
+            array($this, 'region_is_active')
+        ));
         try {
             $bus_summary = olama_core()->transport_master()->replace_buses_from_source($buses);
             $region_summary = olama_core()->transport_master()->replace_regions_from_source($regions);
@@ -85,5 +88,30 @@ class Olama_Oracle_Transport_Master_Importer {
             return $data[$key];
         }
         return array();
+    }
+
+    /**
+     * Defensively honor the Oracle region status when an older Bridge version
+     * still returns inactive rows despite the active-only request.
+     */
+    private function region_is_active($region) {
+        if (!is_array($region)) {
+            return false;
+        }
+        $keys = array(
+            'is_active', 'active', 'region_is_active', 'region_active',
+            'is_active_name', 'active_name', 'status', 'status_name',
+        );
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $region) || $region[$key] === '' || $region[$key] === null) {
+                continue;
+            }
+            $value = strtolower(trim((string) $region[$key]));
+            return in_array($value, array('1', 'true', 'yes', 'y', 'active', 'enabled', 'فعال'), true);
+        }
+
+        // The endpoint was explicitly requested as active-only. Rows from a
+        // Bridge contract that predates a status field are therefore accepted.
+        return true;
     }
 }

@@ -48,7 +48,11 @@ class Olama_Oracle_Api_Client {
     }
 
     public function get_transportation_regions($study_year) {
-        return $this->request('GET', '/api/transportation/regions', array('study_year' => $study_year));
+        return $this->request('GET', '/api/transportation/regions', array(
+            'study_year' => $study_year,
+            'active_only' => 1,
+            'include_inactive' => 0,
+        ));
     }
 
     public function get_students($params = array()) {
