@@ -63,10 +63,13 @@ class Olama_Oracle_Api_Client {
         return $this->request('GET', '/api/students/search', array('q' => $term));
     }
 
+    public function get_transferred_students($study_year) {
+        return $this->request('GET', '/api/academic/transferred-students', array('study_year' => $study_year));
+    }
+
     public function get($path, $params = array()) {
         return $this->request('GET', $path, $params);
     }
-
     private function request($method, $path, $params = array()) {
         if (!$this->base_url) {
             return array('success' => false, 'status_code' => 0, 'data' => null, 'message' => 'Oracle Bridge Base URL is not configured.');

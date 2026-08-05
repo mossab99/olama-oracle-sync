@@ -38,13 +38,14 @@ class Olama_Oracle_Academic_Importer {
                 $this->logger->log_item($run_id, 'academic_' . $entity, $study_year, null, null, 'replaced', 'success', sprintf('%d records synchronized.', $count));
             }
             $message = sprintf(
-                'Academic information synchronized for %s: %d grades, %d sections, %d grade-section pairs, %d students, and %d grade subjects.',
+                'Academic information synchronized for %s: %d grades, %d sections, %d grade-section pairs, %d students, %d grade subjects, and %d transferred students.',
                 $study_year,
                 $counts['grades'],
                 $counts['sections'],
                 $counts['grade_sections'],
                 $counts['students'],
-                $counts['grade_subjects']
+                $counts['grade_subjects'],
+                $counts['transferred_students'] ?? 0
             );
             $this->logger->finish_run($run_id, 'completed', $message);
             return array('success' => true, 'message' => $message, 'run_id' => $run_id, 'counts' => $counts);
