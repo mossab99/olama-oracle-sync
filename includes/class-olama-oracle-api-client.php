@@ -15,8 +15,8 @@ class Olama_Oracle_Api_Client {
         $this->timeout = $timeout ?: Olama_Oracle_Settings::get('request_timeout');
     }
 
-    public function health() {
-        return $this->request('GET', '/api/health');
+    public function health($timeout = null) {
+        return $this->request('GET', '/api/health', array(), $timeout);
     }
 
     public function get_families($params = array()) {
@@ -78,7 +78,7 @@ class Olama_Oracle_Api_Client {
     public function get($path, $params = array()) {
         return $this->request('GET', $path, $params);
     }
-    private function request($method, $path, $params = array()) {
+    private function request($method, $path, $params = array(), $timeout = null) {
         if (!$this->base_url) {
             return array('success' => false, 'status_code' => 0, 'data' => null, 'message' => 'Oracle Bridge Base URL is not configured.');
         }
@@ -93,7 +93,7 @@ class Olama_Oracle_Api_Client {
         }
 
         $args = array(
-            'timeout' => max(1, absint($this->timeout)),
+            'timeout' => max(1, absint(null === $timeout ? $this->timeout : $timeout)),
             'headers' => array(
                 'X-API-Key' => $this->api_key,
                 'Accept' => 'application/json',

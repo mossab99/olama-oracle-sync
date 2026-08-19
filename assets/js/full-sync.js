@@ -3,7 +3,11 @@
 
     var state = {
         jobId: parseInt($('[data-olama-progress-card]').attr('data-active-job'), 10) || 0,
-        polling: false
+        polling: false,
+        jobBusy: false,
+        bridgeConnected: false,
+        checkingBridge: false,
+        lastJob: null
     };
     var $startButtons = $('[data-olama-start-job]');
     var $oneButton = $('[data-olama-sync-one]');
@@ -12,6 +16,8 @@
     var $title = $('[data-olama-progress-title]');
     var $percent = $('[data-olama-progress-percent]');
     var $bar = $('[data-olama-full-sync-bar]');
+    var $bridge = $('[data-olama-bridge-status]');
+    var $jobControl = $('[data-olama-job-control]');
     var phaseSets = {
         fast: ['fast_sync', 'employees', 'academic', 'transportation', 'validation'],
         complete: ['families', 'students', 'employees', 'academic', 'transportation', 'validation'],
@@ -26,9 +32,57 @@
     }
 
     function setBusy(busy) {
-        $startButtons.prop('disabled', busy);
-        $oneButton.prop('disabled', busy);
+        state.jobBusy = busy;
+        var disabled = busy || !state.bridgeConnected;
+        $startButtons.prop('disabled', disabled);
+        $oneButton.prop('disabled', disabled);
         $('.olama-oracle-sync-choice').toggleClass('is-busy', busy);
+    }
+
+    function renderBridge(connected, configured, message) {
+        state.bridgeConnected = connected;
+        $bridge.removeClass('is-ready is-offline is-checking is-missing');
+        if (!configured) {
+            $bridge.addClass('is-missing');
+            $('[data-olama-bridge-title]').text('إعداد الاتصال غير مكتمل');
+        } else if (connected) {
+            $bridge.addClass('is-ready');
+            $('[data-olama-bridge-title]').text('Oracle Bridge متصل الآن');
+        } else {
+            $bridge.addClass('is-offline');
+            $('[data-olama-bridge-title]').text('Oracle Bridge غير متصل');
+        }
+        $('[data-olama-bridge-message]').text(message || 'تعذر التحقق من الاتصال.');
+        setBusy(state.jobBusy);
+        if (state.lastJob) {
+            renderJobControl(state.lastJob);
+        }
+    }
+
+    function checkBridge() {
+        if (state.checkingBridge || !OlamaOracleFullSync.configured) {
+            if (!OlamaOracleFullSync.configured) {
+                renderBridge(false, false, 'أدخل رابط Oracle Bridge ومفتاح API من صفحة الإعدادات.');
+            }
+            return;
+        }
+
+        state.checkingBridge = true;
+        if (!state.bridgeConnected) {
+            $bridge.removeClass('is-ready is-offline').addClass('is-checking');
+            $('[data-olama-bridge-title]').text('جاري فحص Oracle Bridge...');
+        }
+        request('olama_oracle_bridge_status').done(function(response) {
+            var data = response && response.data ? response.data : {};
+            renderBridge(!!data.connected, data.configured !== false, data.connected
+                ? 'تم التحقق من Bridge وقاعدة بيانات Oracle.'
+                : (data.message || 'تعذر الوصول إلى Oracle Bridge.'));
+        }).fail(function() {
+            renderBridge(false, true, 'تعذر الوصول إلى WordPress أثناء فحص Oracle Bridge.');
+        }).always(function() {
+            state.checkingBridge = false;
+            window.setTimeout(checkBridge, 30000);
+        });
     }
 
     function setPhase(current, status, scope) {
@@ -46,9 +100,22 @@
         });
     }
 
+    function renderJobControl(job) {
+        if (!$jobControl.length || !job || job.done || ['queued', 'running', 'paused'].indexOf(job.status) === -1) {
+            $jobControl.attr('hidden', true).prop('disabled', true);
+            return;
+        }
+        var paused = job.status === 'paused';
+        $jobControl.removeAttr('hidden')
+            .attr('data-command', paused ? 'resume' : 'pause')
+            .text(paused ? 'استئناف المزامنة' : 'إيقاف مؤقت')
+            .prop('disabled', paused && !state.bridgeConnected);
+    }
+
     function renderJob(job) {
         var progress = Math.max(0, Math.min(100, parseFloat(job.progress_percentage) || 0));
         var counts = job.counts || {};
+        state.lastJob = job;
         state.jobId = parseInt(job.id, 10) || state.jobId;
         $card.attr('data-active-job', state.jobId);
         $percent.text(Math.round(progress) + '%');
@@ -60,10 +127,13 @@
         });
         setPhase(job.current_phase, job.status, job.scope);
 
-        $card.removeClass('has-error is-complete is-running');
+        $card.removeClass('has-error is-complete is-running is-paused');
         if (job.status === 'failed') {
             $title.text('توقفت العملية #' + job.id);
             $card.addClass('has-error');
+        } else if (job.status === 'paused') {
+            $title.text('العملية #' + job.id + ' متوقفة مؤقتاً');
+            $card.addClass('is-paused');
         } else if (job.done) {
             $title.text('اكتملت العملية #' + job.id);
             $card.addClass('is-complete');
@@ -72,6 +142,7 @@
             $card.addClass('is-running');
         }
         setBusy(!job.done);
+        renderJobControl(job);
     }
 
     function pollJob() {
@@ -86,11 +157,11 @@
             }
             renderJob(response.data);
             if (!response.data.done) {
-                window.setTimeout(pollJob, 3000);
+                window.setTimeout(pollJob, 10000);
             }
         }).fail(function() {
             $message.text('تعذر الاتصال مؤقتاً. ستتم إعادة المحاولة تلقائياً.');
-            window.setTimeout(pollJob, 5000);
+            window.setTimeout(pollJob, 10000);
         }).always(function() {
             state.polling = false;
         });
@@ -133,6 +204,7 @@
             $message.text(data.message || 'تعذر الاتصال بخادم WordPress لبدء العملية.');
             $card.addClass('has-error').removeClass('is-running');
             setBusy(false);
+            checkBridge();
         });
     });
 
@@ -168,8 +240,42 @@
         });
     });
 
+    $jobControl.on('click', function() {
+        if (!state.jobId) {
+            return;
+        }
+        var command = String($jobControl.attr('data-command') || '');
+        if (command !== 'pause' && command !== 'resume') {
+            return;
+        }
+
+        $jobControl.prop('disabled', true);
+        $message.text(command === 'pause'
+            ? 'سيتم إيقاف العملية بعد اكتمال الدفعة الحالية...'
+            : 'جاري التحقق من الاتصال واستئناف العملية...');
+        request('olama_oracle_control_sync_job', {job_id: state.jobId, command: command}).done(function(response) {
+            if (!response || !response.success) {
+                $message.text(response && response.data && response.data.message ? response.data.message : 'تعذر تغيير حالة العملية.');
+                renderJobControl(state.lastJob);
+                return;
+            }
+            renderJob(response.data);
+            if (command === 'resume') {
+                pollJob();
+            }
+        }).fail(function(xhr) {
+            var data = xhr.responseJSON && xhr.responseJSON.data ? xhr.responseJSON.data : {};
+            $message.text(data.message || 'تعذر تغيير حالة العملية.');
+            renderJobControl(state.lastJob);
+            if (command === 'resume') {
+                checkBridge();
+            }
+        });
+    });
+
     if (state.jobId) {
         setBusy(true);
         pollJob();
     }
+    checkBridge();
 })(jQuery);

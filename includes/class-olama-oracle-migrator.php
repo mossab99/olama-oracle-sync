@@ -30,6 +30,7 @@ class Olama_Oracle_Migrator {
             'default_study_year' => '',
             'request_timeout' => 30,
             'batch_size' => 100,
+            'fast_batch_size' => 25,
             'store_raw_payloads' => 'no',
             'raw_payload_retention_days' => 7,
             'sync_mode' => 'manual',

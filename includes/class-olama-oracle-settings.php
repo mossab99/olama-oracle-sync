@@ -35,6 +35,7 @@ class Olama_Oracle_Settings {
                 : sanitize_text_field((string) $existing['default_study_year']),
             'request_timeout' => isset($input['request_timeout']) ? max(1, absint($input['request_timeout'])) : 30,
             'batch_size' => isset($input['batch_size']) ? max(1, min(1000, absint($input['batch_size']))) : 100,
+            'fast_batch_size' => isset($input['fast_batch_size']) ? max(5, min(50, absint($input['fast_batch_size']))) : 25,
             'store_raw_payloads' => isset($input['store_raw_payloads']) && $input['store_raw_payloads'] === 'yes' ? 'yes' : 'no',
             'raw_payload_retention_days' => isset($input['raw_payload_retention_days']) ? max(1, min(365, absint($input['raw_payload_retention_days']))) : 7,
             'sync_mode' => isset($input['sync_mode']) && in_array($input['sync_mode'], array('scheduled_read_only', 'scheduled'), true) ? 'scheduled' : 'manual',

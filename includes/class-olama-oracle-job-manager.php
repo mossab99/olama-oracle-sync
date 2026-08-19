@@ -50,6 +50,13 @@ class Olama_Oracle_Job_Manager {
             return new WP_Error('oracle_job_running', 'Another Oracle synchronization job is already active.', array('job_id' => (int) $active['id']));
         }
 
+        $health = $this->client->health(5);
+        $health_data = isset($health['data']) && is_array($health['data']) ? $health['data'] : array();
+        if (empty($health['success']) || 'ok' !== ($health_data['status'] ?? '') || 'connected' !== ($health_data['oracle'] ?? '')) {
+            $message = isset($health['message']) ? $health['message'] : 'Oracle Bridge is unreachable.';
+            return new WP_Error('oracle_bridge_unavailable', 'Oracle Bridge is disconnected: ' . $message);
+        }
+
         $phases = $this->phases_for_scope($scope);
         $wpdb->insert($this->table, array(
             'scope' => $scope,
@@ -60,10 +67,10 @@ class Olama_Oracle_Job_Manager {
             'total_phases' => count($phases),
             'cursor_offset' => 0,
             'batch_size' => 'fast' === $scope
-                ? max(1, min(50, absint(Olama_Oracle_Settings::get('batch_size'))))
+                ? max(5, min(50, absint(Olama_Oracle_Settings::get('fast_batch_size'))))
                 : max(1, min(100, absint(Olama_Oracle_Settings::get('batch_size')))),
             'phase_runs' => wp_json_encode(array()),
-            'summary_json' => wp_json_encode(array()),
+            'summary_json' => wp_json_encode(array('cached_counts' => $this->empty_counts())),
             'message' => 'Synchronization queued.',
             'created_by' => null === $created_by ? get_current_user_id() : absint($created_by),
             'started_at' => current_time('mysql'),
@@ -87,6 +94,7 @@ class Olama_Oracle_Job_Manager {
 
         $lock_key = 'olama_oracle_job_lock_' . $job_id;
         if (get_transient($lock_key)) {
+            $this->schedule_job($job_id, 30);
             return;
         }
         set_transient($lock_key, 1, 5 * MINUTE_IN_SECONDS);
@@ -95,6 +103,7 @@ class Olama_Oracle_Job_Manager {
             $this->update_job($job_id, array('status' => 'running', 'heartbeat_at' => current_time('mysql')));
             $job = $this->get_job($job_id, false);
             $result = $this->process_phase($job);
+            $this->refresh_cached_counts($job_id);
 
             if (is_wp_error($result)) {
                 $this->fail_job($job, $result->get_error_message());
@@ -127,7 +136,9 @@ class Olama_Oracle_Job_Manager {
         unset($job['summary_json']);
         $job['progress_percentage'] = $this->progress_percentage($job);
         if ($with_counts) {
-            $job['counts'] = $this->aggregate_counts($job['phase_runs']);
+            $job['counts'] = isset($job['summary']['cached_counts']) && is_array($job['summary']['cached_counts'])
+                ? array_merge($this->empty_counts(), array_map('intval', $job['summary']['cached_counts']))
+                : $this->aggregate_counts($job['phase_runs']);
         }
         $job['done'] = in_array($job['status'], array('completed', 'completed_with_errors', 'failed'), true);
 
@@ -144,8 +155,64 @@ class Olama_Oracle_Job_Manager {
     public function active_job() {
         global $wpdb;
 
-        $id = $wpdb->get_var("SELECT id FROM `{$this->table}` WHERE status IN ('queued','running') ORDER BY id DESC LIMIT 1");
+        $id = $wpdb->get_var("SELECT id FROM `{$this->table}` WHERE status IN ('queued','running','paused') ORDER BY id DESC LIMIT 1");
         return $id ? $this->get_job($id) : null;
+    }
+
+    public function pause_job($job_id) {
+        $job = $this->get_job($job_id);
+        if (!$job) {
+            return new WP_Error('oracle_job_not_found', 'Synchronization job not found.');
+        }
+        if ('paused' === $job['status']) {
+            return $job;
+        }
+        if (!in_array($job['status'], array('queued', 'running'), true)) {
+            return new WP_Error('oracle_job_not_pauseable', 'Only an active synchronization job can be paused.');
+        }
+
+        $this->update_job($job_id, array(
+            'status' => 'paused',
+            'message' => 'Synchronization paused. Resume it to continue from the saved cursor.',
+            'heartbeat_at' => current_time('mysql'),
+        ));
+        wp_clear_scheduled_hook(self::PROCESS_HOOK, array(absint($job_id)));
+        return $this->get_job($job_id);
+    }
+
+    public function resume_job($job_id) {
+        $job = $this->get_job($job_id);
+        if (!$job) {
+            return new WP_Error('oracle_job_not_found', 'Synchronization job not found.');
+        }
+        if ('paused' !== $job['status']) {
+            return new WP_Error('oracle_job_not_resumable', 'Only a paused synchronization job can be resumed.');
+        }
+
+        $health = $this->client->health(5);
+        $health_data = isset($health['data']) && is_array($health['data']) ? $health['data'] : array();
+        if (empty($health['success']) || 'ok' !== ($health_data['status'] ?? '') || 'connected' !== ($health_data['oracle'] ?? '')) {
+            $message = isset($health['message']) ? $health['message'] : 'Oracle Bridge is unreachable.';
+            return new WP_Error('oracle_bridge_unavailable', 'Cannot resume while Oracle Bridge is disconnected: ' . $message);
+        }
+
+        $this->update_job($job_id, array(
+            'status' => 'queued',
+            'message' => 'Synchronization resumed and queued from the saved cursor.',
+            'heartbeat_at' => current_time('mysql'),
+        ));
+        $this->schedule_job($job_id);
+        return $this->get_job($job_id);
+    }
+
+    public function fail_active_job_for_disconnect($message) {
+        $job = $this->active_job();
+        if (!$job || 'paused' === $job['status']) {
+            return 0;
+        }
+
+        $this->fail_job($job, $message);
+        return (int) $job['id'];
     }
 
     public function start_scheduled_job() {
@@ -214,17 +281,21 @@ class Olama_Oracle_Job_Manager {
             (int) $job['cursor_offset']
         );
 
+        $unsupported_contract = false;
         if (!empty($result['success'])) {
             $contract = isset($result['data']) && is_array($result['data']) ? $result['data'] : array();
             if (1 !== (int) ($contract['version'] ?? 0) || !array_key_exists('families', $contract) || !is_array($contract['families'])) {
-                $result = array('success' => false, 'message' => 'Fast Sync returned an unsupported or incomplete response contract.');
+                $unsupported_contract = true;
+                $result = array('success' => false, 'status_code' => 200, 'message' => 'Fast Sync returned an unsupported or incomplete response contract.');
             }
         }
 
         if (empty($result['success'])) {
             // A Bridge that has not been upgraded yet must not make Fast Sync destructive.
             // On the first page, transparently switch this job to the proven standard path.
-            if (0 === (int) $job['cursor_offset']) {
+            $can_fallback = 0 === (int) $job['cursor_offset']
+                && (404 === (int) ($result['status_code'] ?? 0) || $unsupported_contract);
+            if ($can_fallback) {
                 $this->logger->finish_run($run_id, 'failed', isset($result['message']) ? $result['message'] : 'Fast Sync is unavailable.');
                 $standard_phases = $this->phases_for_scope('complete');
                 $this->update_job($job['id'], array(
@@ -463,10 +534,10 @@ class Olama_Oracle_Job_Manager {
         ));
     }
 
-    private function schedule_job($job_id) {
+    private function schedule_job($job_id, $delay = 1) {
         $args = array(absint($job_id));
         if (!wp_next_scheduled(self::PROCESS_HOOK, $args)) {
-            wp_schedule_single_event(time() + 1, self::PROCESS_HOOK, $args);
+            wp_schedule_single_event(time() + max(1, absint($delay)), self::PROCESS_HOOK, $args);
         }
     }
 
@@ -490,6 +561,21 @@ class Olama_Oracle_Job_Manager {
         global $wpdb;
 
         $wpdb->update($this->table, $data, array('id' => absint($job_id)));
+    }
+
+    private function refresh_cached_counts($job_id) {
+        $job = $this->get_job($job_id, false);
+        if (!$job) {
+            return;
+        }
+
+        $summary = $job['summary'];
+        $summary['cached_counts'] = $this->aggregate_counts($job['phase_runs']);
+        $this->update_job($job_id, array('summary_json' => wp_json_encode($summary)));
+    }
+
+    private function empty_counts() {
+        return array('seen' => 0, 'created' => 0, 'updated' => 0, 'skipped' => 0, 'failed' => 0);
     }
 
     private function decode_json($json) {
@@ -529,7 +615,7 @@ class Olama_Oracle_Job_Manager {
         }
         $ids = array_values(array_unique(array_filter($ids)));
         if (!$ids) {
-            return array('seen' => 0, 'created' => 0, 'updated' => 0, 'skipped' => 0, 'failed' => 0);
+            return $this->empty_counts();
         }
 
         $placeholders = implode(',', array_fill(0, count($ids), '%d'));

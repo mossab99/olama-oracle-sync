@@ -365,6 +365,16 @@
     box-shadow: 0 0 0 4px rgba(25, 135, 84, .1);
 }
 
+.olama-oracle-connection-card.is-checking .olama-oracle-status-dot {
+    background: #dba617;
+    box-shadow: 0 0 0 4px rgba(219, 166, 23, .12);
+}
+
+.olama-oracle-connection-card.is-offline {
+    border-color: rgba(180, 35, 24, .35);
+    background: #fff8f7;
+}
+
 .olama-oracle-sync-actions {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -515,6 +525,11 @@
 
 .olama-oracle-progress-card.has-error {
     border-color: rgba(180, 35, 24, .5);
+}
+
+.olama-oracle-progress-card.is-paused {
+    border-color: rgba(219, 166, 23, .55);
+    background: #fffdf5;
 }
 
 .olama-oracle-progress-heading {
