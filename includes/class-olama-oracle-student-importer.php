@@ -113,6 +113,70 @@ class Olama_Oracle_Student_Importer {
         return array('success' => true, 'message' => $message, 'run_id' => $run_id, 'next_offset' => $next_offset < $total_families ? $next_offset : null, 'summary' => $summary, 'study_year' => $study_year);
     }
 
+    /** Import a Bridge-provided family bundle without making per-family HTTP calls. */
+    public function import_fast_bundle(array $bundle, $run_id, $study_year) {
+        $study_year = $this->resolve_study_year($study_year);
+        $family = isset($bundle['family']) && is_array($bundle['family']) ? $bundle['family'] : array();
+        $family_id = $this->first($family, array('family_id', 'oracle_family_id'));
+        $summary = $this->empty_summary();
+        $summary['families'] = 1;
+
+        if (!$family_id || !olama_core()->families()->get_by_oracle_id($family_id)) {
+            $summary['failed']++;
+            $this->logger->log_item($run_id, 'family', null, $family_id, null, 'failed', 'failed', 'Fast Sync family was not imported into Core.');
+            return array('success' => false, 'summary' => $summary);
+        }
+
+        $students = isset($bundle['students']) && is_array($bundle['students']) ? $bundle['students'] : array();
+        foreach ($students as $student) {
+            if (!is_array($student)) {
+                $summary['failed']++;
+                continue;
+            }
+            $student['family_id'] = isset($student['family_id']) ? $student['family_id'] : $family_id;
+            $this->merge_summary($summary, $this->import_record($student, $run_id, '/api/v1/sync/families-bulk', $study_year));
+        }
+
+        $financial = isset($bundle['financial']) && is_array($bundle['financial']) ? $bundle['financial'] : null;
+        try {
+            if (null === $financial
+                || !isset($financial['due_allocations']) || !is_array($financial['due_allocations'])
+                || !isset($financial['student_transactions']) || !is_array($financial['student_transactions'])) {
+                throw new RuntimeException('Fast Sync financial payload is incomplete; existing financial rows were preserved.');
+            }
+            if (!empty($financial['family_summary']) && is_array($financial['family_summary'])) {
+                $financial['family_summary']['oracle_family_id'] = $family_id;
+                $financial['family_summary']['study_year'] = $study_year;
+                $result = olama_core()->financial()->upsert_summary_from_source($financial['family_summary']);
+                $this->logger->log_item($run_id, 'family_financial', 'ORA-FAM-' . $family_id, $family_id, null, $result['operation'], 'success', 'Fast Sync financial summary ' . $result['operation']);
+            }
+            $dues = is_array($financial['due_allocations']) ? $financial['due_allocations'] : array();
+            $transactions = is_array($financial['student_transactions']) ? $financial['student_transactions'] : array();
+            olama_core()->financial()->replace_dues_from_source($family_id, $study_year, $dues);
+            olama_core()->financial()->replace_transactions_from_source($family_id, $study_year, $transactions);
+            $this->logger->log_item($run_id, 'financial_dues', 'ORA-FAM-' . $family_id, $family_id, null, 'replaced', 'success', 'Fast Sync financial dues: ' . count($dues));
+            $this->logger->log_item($run_id, 'financial_transactions', 'ORA-FAM-' . $family_id, $family_id, null, 'replaced', 'success', 'Fast Sync financial transactions: ' . count($transactions));
+        } catch (Exception $e) {
+            $summary['failed']++;
+            $this->logger->log_item($run_id, 'family_financial', 'ORA-FAM-' . $family_id, $family_id, null, 'failed', 'failed', $e->getMessage());
+        }
+
+        try {
+            if (!array_key_exists('transportation', $bundle) || !is_array($bundle['transportation'])) {
+                throw new RuntimeException('Fast Sync transportation payload is incomplete; existing transportation rows were preserved.');
+            }
+            $transportation = $bundle['transportation'];
+            olama_core()->transportation()->replace_family_year_from_source($family_id, $study_year, $transportation);
+            $this->logger->log_item($run_id, 'transportation', 'ORA-FAM-' . $family_id, $family_id, null, 'replaced', 'success', 'Fast Sync transportation rows: ' . count($transportation));
+        } catch (Exception $e) {
+            $summary['failed']++;
+            $this->logger->log_item($run_id, 'transportation', 'ORA-FAM-' . $family_id, $family_id, null, 'failed', 'failed', $e->getMessage());
+        }
+
+        $this->logger->store_payload('fast_sync', $family_id, null, '/api/v1/sync/families-bulk', $bundle);
+        return array('success' => 0 === $summary['failed'], 'summary' => $summary);
+    }
+
     public function import_student_years_for_imported_families($offset = 0, $study_year = null, $limit = null, $run_id = null) {
         return $this->import_all_imported_families($offset, $study_year, $limit, $run_id);
     }

@@ -102,6 +102,10 @@ class Olama_Oracle_Family_Importer {
         return array('success' => true, 'message' => 'Family import finished.', 'run_id' => $run_id);
     }
 
+    public function import_payload(array $family, $run_id, $endpoint = '/api/v1/sync/families-bulk') {
+        return $this->import_record($family, $run_id, $endpoint);
+    }
+
     private function import_record(array $family, $run_id, $endpoint) {
         $family_id = isset($family['family_id']) ? $family['family_id'] : (isset($family['oracle_family_id']) ? $family['oracle_family_id'] : '');
         try {
@@ -127,9 +131,11 @@ class Olama_Oracle_Family_Importer {
             $result = olama_core()->families()->upsert_from_source($data);
             $this->logger->store_payload('family', $family_id, null, $endpoint, $family);
             $this->logger->log_item($run_id, 'family', $result['uid'], $family_id, null, $result['operation'], 'success', ucfirst($result['operation']));
+            return array('success' => true, 'operation' => $result['operation'], 'uid' => $result['uid']);
         } catch (Exception $e) {
             $uid = $family_id ? 'ORA-FAM-' . $family_id : null;
             $this->logger->log_item($run_id, 'family', $uid, $family_id, null, 'failed', 'failed', $e->getMessage());
+            return array('success' => false, 'operation' => 'failed', 'message' => $e->getMessage());
         }
     }
 

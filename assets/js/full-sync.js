@@ -12,7 +12,11 @@
     var $title = $('[data-olama-progress-title]');
     var $percent = $('[data-olama-progress-percent]');
     var $bar = $('[data-olama-full-sync-bar]');
-    var phases = ['families', 'students', 'employees', 'academic', 'transportation', 'validation'];
+    var phaseSets = {
+        fast: ['fast_sync', 'employees', 'academic', 'transportation', 'validation'],
+        complete: ['families', 'students', 'employees', 'academic', 'transportation', 'validation'],
+        family_pipeline: ['families', 'students', 'validation']
+    };
 
     function request(action, data) {
         return $.post(OlamaOracleFullSync.ajaxUrl, $.extend({
@@ -27,11 +31,13 @@
         $('.olama-oracle-sync-choice').toggleClass('is-busy', busy);
     }
 
-    function setPhase(current, status) {
+    function setPhase(current, status, scope) {
+        var phases = phaseSets[scope] || phaseSets.complete;
         var currentIndex = phases.indexOf(current);
-        $('[data-phase]').removeClass('is-active is-complete');
+        $('[data-phase]').removeClass('is-active is-complete').attr('hidden', true);
         phases.forEach(function(phase, index) {
             var $phase = $('[data-phase="' + phase + '"]');
+            $phase.removeAttr('hidden');
             if (status === 'completed' || status === 'completed_with_errors' || index < currentIndex) {
                 $phase.addClass('is-complete');
             } else if (index === currentIndex) {
@@ -52,7 +58,7 @@
             var key = $(this).attr('data-olama-job-count');
             $(this).text(parseInt(counts[key], 10) || 0);
         });
-        setPhase(job.current_phase, job.status);
+        setPhase(job.current_phase, job.status, job.scope);
 
         $card.removeClass('has-error is-complete is-running');
         if (job.status === 'failed') {

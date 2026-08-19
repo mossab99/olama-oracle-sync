@@ -39,7 +39,7 @@ class Olama_Oracle_Job_Manager {
     public function start_job($scope, $study_year, $created_by = null) {
         global $wpdb;
 
-        $scope = in_array($scope, array('complete', 'family_pipeline'), true) ? $scope : 'complete';
+        $scope = in_array($scope, array('complete', 'family_pipeline', 'fast'), true) ? $scope : 'complete';
         $study_year = sanitize_text_field((string) $study_year);
         if ('' === $study_year) {
             return new WP_Error('oracle_job_year_required', 'The active study year is required.');
@@ -59,7 +59,9 @@ class Olama_Oracle_Job_Manager {
             'phase_index' => 0,
             'total_phases' => count($phases),
             'cursor_offset' => 0,
-            'batch_size' => max(1, min(100, absint(Olama_Oracle_Settings::get('batch_size')))),
+            'batch_size' => 'fast' === $scope
+                ? max(1, min(50, absint(Olama_Oracle_Settings::get('batch_size'))))
+                : max(1, min(100, absint(Olama_Oracle_Settings::get('batch_size')))),
             'phase_runs' => wp_json_encode(array()),
             'summary_json' => wp_json_encode(array()),
             'message' => 'Synchronization queued.',
@@ -183,6 +185,9 @@ class Olama_Oracle_Job_Manager {
         }
 
         $phase = $phases[$phase_index];
+        if ('fast_sync' === $phase) {
+            return $this->process_fast_sync($job);
+        }
         if ('families' === $phase) {
             return $this->process_families($job);
         }
@@ -199,6 +204,95 @@ class Olama_Oracle_Job_Manager {
         }
 
         return $this->advance_phase($job, ucfirst($phase) . ' phase completed.');
+    }
+
+    private function process_fast_sync($job) {
+        $run_id = $this->ensure_phase_run($job, 'fast_sync', 'job_fast_sync');
+        $result = $this->client->get_fast_sync_batch(
+            $job['study_year'],
+            (int) $job['batch_size'],
+            (int) $job['cursor_offset']
+        );
+
+        if (!empty($result['success'])) {
+            $contract = isset($result['data']) && is_array($result['data']) ? $result['data'] : array();
+            if (1 !== (int) ($contract['version'] ?? 0) || !array_key_exists('families', $contract) || !is_array($contract['families'])) {
+                $result = array('success' => false, 'message' => 'Fast Sync returned an unsupported or incomplete response contract.');
+            }
+        }
+
+        if (empty($result['success'])) {
+            // A Bridge that has not been upgraded yet must not make Fast Sync destructive.
+            // On the first page, transparently switch this job to the proven standard path.
+            if (0 === (int) $job['cursor_offset']) {
+                $this->logger->finish_run($run_id, 'failed', isset($result['message']) ? $result['message'] : 'Fast Sync is unavailable.');
+                $standard_phases = $this->phases_for_scope('complete');
+                $this->update_job($job['id'], array(
+                    'scope' => 'complete',
+                    'current_phase' => $standard_phases[0],
+                    'phase_index' => 0,
+                    'total_phases' => count($standard_phases),
+                    'cursor_offset' => 0,
+                    'active_run_id' => null,
+                    'message' => 'Fast Sync is unavailable on the Bridge; continuing with Standard Sync.',
+                    'heartbeat_at' => current_time('mysql'),
+                ));
+                return array('job_complete' => false);
+            }
+            $this->logger->finish_run($run_id, 'failed', $result['message']);
+            return new WP_Error('oracle_fast_sync_failed', $result['message']);
+        }
+
+        $data = isset($result['data']) && is_array($result['data']) ? $result['data'] : array();
+        $bundles = isset($data['families']) && is_array($data['families']) ? $data['families'] : array();
+        $family_importer = new Olama_Oracle_Family_Importer($this->client, $this->logger);
+        $student_importer = new Olama_Oracle_Student_Importer($this->client, $this->logger);
+        $summary = $job['summary'];
+
+        foreach ($bundles as $bundle) {
+            if (!is_array($bundle) || empty($bundle['family']) || !is_array($bundle['family'])) {
+                $this->logger->log_item($run_id, 'family', null, null, null, 'failed', 'failed', 'Invalid Fast Sync family bundle.');
+                $summary['failed'] = isset($summary['failed']) ? (int) $summary['failed'] + 1 : 1;
+                continue;
+            }
+            $family_result = $family_importer->import_payload($bundle['family'], $run_id);
+            if (empty($family_result['success'])) {
+                $summary['failed'] = isset($summary['failed']) ? (int) $summary['failed'] + 1 : 1;
+                continue;
+            }
+            $bundle_result = $student_importer->import_fast_bundle($bundle, $run_id, $job['study_year']);
+            $batch_summary = isset($bundle_result['summary']) && is_array($bundle_result['summary']) ? $bundle_result['summary'] : array();
+            foreach (array('families', 'students_created', 'students_updated', 'students_skipped', 'student_years_created', 'student_years_updated', 'student_years_skipped', 'failed') as $key) {
+                $summary[$key] = isset($summary[$key]) ? (int) $summary[$key] + (int) ($batch_summary[$key] ?? 0) : (int) ($batch_summary[$key] ?? 0);
+            }
+        }
+
+        $summary['fast_processed'] = isset($summary['fast_processed'])
+            ? (int) $summary['fast_processed'] + count($bundles)
+            : count($bundles);
+        $summary['fast_total'] = isset($data['total']) ? absint($data['total']) : (int) $summary['fast_processed'];
+        $has_more = !empty($data['has_more']) && !empty($bundles);
+        $next_cursor = isset($data['next_cursor']) ? absint($data['next_cursor']) : 0;
+
+        if ($has_more && $next_cursor <= (int) $job['cursor_offset']) {
+            $message = 'Fast Sync returned a non-advancing cursor; stopped to avoid a pagination loop.';
+            $this->logger->finish_run($run_id, 'failed', $message);
+            return new WP_Error('oracle_fast_sync_cursor_loop', $message);
+        }
+
+        $this->update_job($job['id'], array(
+            'cursor_offset' => $has_more ? $next_cursor : (int) $job['cursor_offset'],
+            'summary_json' => wp_json_encode($summary),
+            'message' => 'Fast Sync family bundles: ' . (int) $summary['fast_processed'] . ' / ' . (int) $summary['fast_total'] . '.',
+            'heartbeat_at' => current_time('mysql'),
+        ));
+
+        if ($has_more) {
+            return array('job_complete' => false);
+        }
+
+        $this->logger->finish_run($run_id);
+        return $this->advance_phase($job, 'Fast Sync family pipeline completed.');
     }
 
     private function process_families($job) {
@@ -383,6 +477,9 @@ class Olama_Oracle_Job_Manager {
     }
 
     private function phases_for_scope($scope) {
+        if ('fast' === $scope) {
+            return array('fast_sync', 'employees', 'academic', 'transportation', 'validation');
+        }
         if ('family_pipeline' === $scope) {
             return array('families', 'students', 'validation');
         }
@@ -412,6 +509,12 @@ class Olama_Oracle_Job_Manager {
             $families = (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$wpdb->prefix}olama_core_families`");
             if ($families > 0) {
                 $phase_progress = min(1, (int) $job['cursor_offset'] / $families);
+            }
+        } elseif ('fast_sync' === $job['current_phase']) {
+            $processed = isset($job['summary']['fast_processed']) ? (int) $job['summary']['fast_processed'] : 0;
+            $families = isset($job['summary']['fast_total']) ? (int) $job['summary']['fast_total'] : 0;
+            if ($families > 0) {
+                $phase_progress = min(1, $processed / $families);
             }
         }
         return min(99, round((((int) $job['phase_index'] + $phase_progress) / $total) * 100));

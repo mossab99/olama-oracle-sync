@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Olama Oracle Sync
  * Description: Oracle data ingestion, synchronization, diagnostics, and monitoring for Olama Core.
- * Version: 0.6.0
+ * Version: 0.7.0
  * Author: Olama
  */
 
@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('OLAMA_ORACLE_SYNC_VERSION', '0.6.0');
+define('OLAMA_ORACLE_SYNC_VERSION', '0.7.0');
 define('OLAMA_ORACLE_SYNC_FILE', __FILE__);
 define('OLAMA_ORACLE_SYNC_PATH', plugin_dir_path(__FILE__));
 define('OLAMA_ORACLE_SYNC_URL', plugin_dir_url(__FILE__));

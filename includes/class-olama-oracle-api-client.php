@@ -43,6 +43,14 @@ class Olama_Oracle_Api_Client {
         return $this->request('GET', '/api/families/' . rawurlencode($oracle_family_id) . '/transportation', $params);
     }
 
+    public function get_fast_sync_batch($study_year, $limit = 50, $cursor = 0) {
+        return $this->request('GET', '/api/v1/sync/families-bulk', array(
+            'study_year' => $study_year,
+            'limit' => max(1, min(100, absint($limit))),
+            'cursor' => max(0, absint($cursor)),
+        ));
+    }
+
     public function get_transportation_buses() {
         return $this->request('GET', '/api/transportation/buses', array('include_inactive' => 1));
     }
