@@ -783,12 +783,12 @@ class Olama_Oracle_Admin {
         submit_button('Sync academic info to Core', 'primary olama-oracle-btn olama-oracle-btn-primary', 'submit', false);
         echo '</form></section>';
 
-        echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><div><h2 class="olama-oracle-section-title">Transportation master data</h2><p class="olama-oracle-section-note">Import Oracle buses and transportation regions into Olama Core. Transportation and other domain plugins read only the canonical Core copy.</p></div></div>';
+        echo '<section class="olama-oracle-section"><div class="olama-oracle-section-header"><div><h2 class="olama-oracle-section-title">Transportation data</h2><p class="olama-oracle-section-note">Import Oracle buses, regions, and family address/area details into Olama Core. Manually selected Planning Areas are preserved.</p></div></div>';
         echo '<form method="post" action="' . esc_url(admin_url('admin.php?page=olama-oracle-sync')) . '">';
         wp_nonce_field('olama_oracle_action');
         echo '<input type="hidden" name="olama_oracle_action" value="import_transport_master">';
         echo '<input type="hidden" name="study_year" value="' . esc_attr($study_year) . '">';
-        submit_button('Import transportation master to Core', 'primary olama-oracle-btn olama-oracle-btn-primary', 'submit', false);
+        submit_button('Import transportation data to Core', 'primary olama-oracle-btn olama-oracle-btn-primary', 'submit', false);
         echo '</form></section>';
 
         echo '<section class="olama-oracle-connection-card ' . ($configured ? 'is-ready' : 'is-missing') . '">';
@@ -866,7 +866,7 @@ class Olama_Oracle_Admin {
         echo '<details class="olama-oracle-section olama-oracle-advanced-sync"><summary><strong>مزامنة مجال محدد</strong><span>أدوات تشغيل متقدمة للموظفين أو الهيكل الأكاديمي أو النقل فقط.</span></summary><div class="olama-oracle-action-grid">';
         $this->action_form('تحديث الموظفين النشطين', 'import_employees');
         $this->action_form('تحديث الهيكل الأكاديمي', 'import_academic_info', false, false, true, $study_year);
-        $this->action_form('تحديث بيانات النقل الأساسية', 'import_transport_master', false, false, true, $study_year);
+        $this->action_form('تحديث بيانات النقل ومواقع العائلات', 'import_transport_master', false, false, true, $study_year);
         echo '</div></details>';
     }
 

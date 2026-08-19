@@ -63,6 +63,13 @@ class Olama_Oracle_Api_Client {
         ));
     }
 
+    public function get_transportation_family_locations($limit = 500, $offset = 0) {
+        return $this->request('GET', '/api/transportation/family-locations', array(
+            'limit' => max(1, min(1000, absint($limit))),
+            'offset' => max(0, absint($offset)),
+        ));
+    }
+
     public function get_students($params = array()) {
         return $this->request('GET', '/api/students', $params);
     }
