@@ -12,7 +12,10 @@ class Olama_Oracle_Api_Client {
         return array('success' => true, 'data' => array('buses' => array(array('oracle_bus_id' => 1))));
     }
     public function get_transportation_regions($year) {
-        return array('success' => true, 'data' => array('regions' => array(array('oracle_region_id' => 89, 'is_active' => 1))));
+        return array('success' => true, 'data' => array('regions' => array(
+            array('oracle_region_id' => 89, 'is_active' => 1),
+            array('oracle_region_id' => 113, 'region_name' => 'المفرق - مدرسة جوهرة الأمل', 'is_active' => 1, 'family_count' => 0),
+        )));
     }
     public function get_transportation_family_locations($limit, $offset) {
         return array('success' => true, 'data' => array(
@@ -37,8 +40,12 @@ class Olama_Oracle_Sync_Logger {
 }
 
 class Olama_Oracle_Transport_Test_Master {
+    public $regions = array();
     public function replace_buses_from_source($rows) { return array('received' => count($rows)); }
-    public function replace_regions_from_source($rows) { return array('received' => count($rows)); }
+    public function replace_regions_from_source($rows) {
+        $this->regions = $rows;
+        return array('received' => count($rows));
+    }
 }
 
 class Olama_Oracle_Transport_Test_Families {
@@ -75,6 +82,8 @@ $logger = new Olama_Oracle_Sync_Logger();
 $result = (new Olama_Oracle_Transport_Master_Importer(new Olama_Oracle_Api_Client(), $logger))->import_all('2026-2027');
 
 if (empty($result['success'])
+    || $result['regions']['received'] !== 2
+    || (int) olama_core()->master->regions[1]['oracle_region_id'] !== 113
     || $result['family_locations']['updated'] !== 1
     || $result['family_locations']['missing'] !== 1
     || count(olama_core()->family_service->locations) !== 2
