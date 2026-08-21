@@ -207,7 +207,8 @@ class Olama_Oracle_Transport_Master_Importer {
         }
         $keys = array(
             'is_active', 'active', 'region_is_active', 'region_active',
-            'is_active_name', 'active_name', 'status', 'status_name',
+            'is_active_name', 'active_name', 'is_enabled', 'enabled',
+            'region_status', 'region_status_name', 'status', 'status_name',
         );
         foreach ($keys as $key) {
             if (!array_key_exists($key, $region) || $region[$key] === '' || $region[$key] === null) {

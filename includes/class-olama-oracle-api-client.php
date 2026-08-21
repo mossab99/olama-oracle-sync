@@ -58,8 +58,12 @@ class Olama_Oracle_Api_Client {
     public function get_transportation_regions($study_year) {
         return $this->request('GET', '/api/transportation/regions', array(
             'study_year' => $study_year,
-            'active_only' => 1,
-            'include_inactive' => 0,
+            // Some Oracle Bridge versions apply active_only inconsistently and
+            // omit valid active regions (for example, region 15). Fetch the
+            // complete master list and let the importer apply the Oracle
+            // status filter consistently before writing to Olama Core.
+            'active_only' => 0,
+            'include_inactive' => 1,
         ));
     }
 
