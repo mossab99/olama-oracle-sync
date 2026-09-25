@@ -13,6 +13,31 @@ class Olama_Oracle_Student_Importer {
         $this->logger = $logger;
     }
 
+    /** Refresh only SCH_FAMILY_DUE_ALLOC for a family and study year. */
+    public function sync_family_dues($oracle_family_id, $study_year) {
+        $study_year = $this->resolve_study_year($study_year);
+        $run_id = $this->logger->start_run('financial_dues');
+        try {
+            if (!olama_core()->families()->get_by_oracle_id($oracle_family_id)) {
+                throw new RuntimeException('Family does not exist in Olama Core.');
+            }
+            $response = $this->client->get_family_financial_card($oracle_family_id, array('study_year' => $study_year));
+            $data = isset($response['data']) && is_array($response['data']) ? $response['data'] : array();
+            if (empty($response['success']) || !isset($data['due_allocations']) || !is_array($data['due_allocations'])) {
+                throw new RuntimeException(isset($response['message']) ? $response['message'] : 'Oracle due allocations are unavailable.');
+            }
+            $result = olama_core()->financial()->replace_dues_from_source($oracle_family_id, $study_year, $data['due_allocations']);
+            $message = 'Financial dues synchronized: ' . (int) $result['count'];
+            $this->logger->log_item($run_id, 'financial_dues', 'ORA-FAM-' . $oracle_family_id, $oracle_family_id, null, 'replaced', 'success', $message);
+            $this->logger->finish_run($run_id);
+            return array('success' => true, 'message' => $message, 'run_id' => $run_id);
+        } catch (Exception $e) {
+            $this->logger->log_item($run_id, 'financial_dues', 'ORA-FAM-' . $oracle_family_id, $oracle_family_id, null, 'failed', 'failed', $e->getMessage());
+            $this->logger->finish_run($run_id, 'failed', $e->getMessage());
+            return array('success' => false, 'message' => $e->getMessage(), 'run_id' => $run_id);
+        }
+    }
+
     public function import_family($oracle_family_id, $run_id = null, $study_year = null) {
         $own_run = !$run_id;
         $run_id = $run_id ?: $this->logger->start_run('family_students');
@@ -460,14 +485,18 @@ class Olama_Oracle_Student_Importer {
         if (!empty($financial['success']) && is_array($financial['data'])) {
             try {
                 $data = $financial['data'];
+                if (!isset($data['due_allocations']) || !is_array($data['due_allocations'])
+                    || !isset($data['student_transactions']) || !is_array($data['student_transactions'])) {
+                    throw new RuntimeException('Financial card is incomplete; existing financial rows were preserved.');
+                }
                 if (!empty($data['family_summary']) && is_array($data['family_summary'])) {
                     $data['family_summary']['oracle_family_id'] = $family_id;
                     $data['family_summary']['study_year'] = $study_year;
                     $result = olama_core()->financial()->upsert_summary_from_source($data['family_summary']);
                     $this->logger->log_item($run_id, 'family_financial', 'ORA-FAM-' . $family_id, $family_id, null, $result['operation'], 'success', 'Financial summary ' . $result['operation']);
                 }
-                $dues = isset($data['due_allocations']) && is_array($data['due_allocations']) ? $data['due_allocations'] : array();
-                $transactions = isset($data['student_transactions']) && is_array($data['student_transactions']) ? $data['student_transactions'] : array();
+                $dues = $data['due_allocations'];
+                $transactions = $data['student_transactions'];
                 olama_core()->financial()->replace_dues_from_source($family_id, $study_year, $dues);
                 olama_core()->financial()->replace_transactions_from_source($family_id, $study_year, $transactions);
                 $this->logger->log_item($run_id, 'financial_dues', 'ORA-FAM-' . $family_id, $family_id, null, 'replaced', 'success', 'Financial dues synchronized: ' . count($dues));

@@ -117,6 +117,13 @@ class Olama_Oracle_Admin {
             $result = (new Olama_Oracle_Student_Importer($this->client, $this->logger))->import_students_by_study_year($study_year);
             $success = $result['success'];
             $message = $result['message'];
+        } elseif ('sync_family_dues' === $action) {
+            $family_id = isset($_POST['oracle_family_id']) ? sanitize_text_field(wp_unslash($_POST['oracle_family_id'])) : '';
+            $result = $family_id !== ''
+                ? (new Olama_Oracle_Student_Importer($this->client, $this->logger))->sync_family_dues($family_id, $study_year)
+                : array('success' => false, 'message' => 'Oracle family number is required.');
+            $success = $result['success'];
+            $message = $result['message'];
         } elseif ('run_validation' === $action) {
             $run_id = $this->logger->start_run('validation');
             $this->logger->log_item($run_id, 'validation', null, null, null, 'report', 'success', 'Validation report generated.');
@@ -191,6 +198,14 @@ class Olama_Oracle_Admin {
         $this->notice();
         echo '<div class="olama-oracle-stack">';
         $this->simple_sync_panel($study_year);
+        echo '<section class="olama-oracle-section"><h2>مزامنة جدول استحقاقات العائلة</h2><p>تحديث SCH_FAMILY_DUE_ALLOC لعائلة واحدة من Oracle إلى جدول Olama Core المالي.</p>';
+        echo '<form method="post" class="olama-oracle-inline-form">';
+        wp_nonce_field('olama_oracle_action');
+        echo '<input type="hidden" name="olama_oracle_action" value="sync_family_dues">';
+        echo '<label>رقم العائلة <input type="text" name="oracle_family_id" required></label> ';
+        echo '<label>السنة الدراسية <input type="text" name="study_year" value="' . esc_attr($study_year) . '" required></label> ';
+        submit_button('مزامنة الاستحقاقات', 'secondary', 'submit', false);
+        echo '</form></section>';
         echo '</div></div></div>';
     }
 
