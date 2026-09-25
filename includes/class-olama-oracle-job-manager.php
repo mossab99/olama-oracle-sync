@@ -39,7 +39,7 @@ class Olama_Oracle_Job_Manager {
     public function start_job($scope, $study_year, $created_by = null) {
         global $wpdb;
 
-        $scope = in_array($scope, array('complete', 'family_pipeline', 'fast'), true) ? $scope : 'complete';
+        $scope = in_array($scope, array('complete', 'family_pipeline', 'fast', 'financial_dues'), true) ? $scope : 'complete';
         $study_year = sanitize_text_field((string) $study_year);
         if ('' === $study_year) {
             return new WP_Error('oracle_job_year_required', 'The active study year is required.');
@@ -48,6 +48,11 @@ class Olama_Oracle_Job_Manager {
         $active = $this->active_job();
         if ($active) {
             return new WP_Error('oracle_job_running', 'Another Oracle synchronization job is already active.', array('job_id' => (int) $active['id']));
+        }
+
+        if ('financial_dues' === $scope
+            && !(int) $wpdb->get_var("SELECT COUNT(*) FROM `{$wpdb->prefix}olama_core_families`")) {
+            return new WP_Error('oracle_no_core_families', 'No families are available in Olama Core. Synchronize families first.');
         }
 
         $health = $this->client->health(5);
@@ -66,9 +71,9 @@ class Olama_Oracle_Job_Manager {
             'phase_index' => 0,
             'total_phases' => count($phases),
             'cursor_offset' => 0,
-            'batch_size' => 'fast' === $scope
+            'batch_size' => 'financial_dues' === $scope ? 10 : ('fast' === $scope
                 ? max(5, min(50, absint(Olama_Oracle_Settings::get('fast_batch_size'))))
-                : max(1, min(100, absint(Olama_Oracle_Settings::get('batch_size')))),
+                : max(1, min(100, absint(Olama_Oracle_Settings::get('batch_size'))))),
             'phase_runs' => wp_json_encode(array()),
             'summary_json' => wp_json_encode(array('cached_counts' => $this->empty_counts())),
             'message' => 'Synchronization queued.',
@@ -261,6 +266,9 @@ class Olama_Oracle_Job_Manager {
         if ('students' === $phase) {
             return $this->process_students($job);
         }
+        if ('financial_dues' === $phase) {
+            return $this->process_financial_dues($job);
+        }
 
         $result = $this->run_single_phase($phase, $job['study_year']);
         if (empty($result['success'])) {
@@ -444,6 +452,46 @@ class Olama_Oracle_Job_Manager {
         return array('job_complete' => false);
     }
 
+    private function process_financial_dues($job) {
+        global $wpdb;
+
+        $run_id = $this->ensure_phase_run($job, 'financial_dues', 'job_financial_dues');
+        $table = $wpdb->prefix . 'olama_core_families';
+        $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$table}`");
+        $offset = (int) $job['cursor_offset'];
+        $family_ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT oracle_family_id FROM `{$table}` ORDER BY id LIMIT %d OFFSET %d",
+            (int) $job['batch_size'], $offset
+        ));
+
+        $importer = new Olama_Oracle_Student_Importer($this->client, $this->logger);
+        $failed = 0;
+        foreach ($family_ids as $family_id) {
+            $result = $importer->sync_family_dues($family_id, $job['study_year'], $run_id);
+            if (empty($result['success'])) {
+                $failed++;
+            }
+        }
+
+        $next_offset = $offset + count($family_ids);
+        $summary = $job['summary'];
+        $summary['dues_processed'] = $next_offset;
+        $summary['dues_total'] = $total;
+        $summary['failed'] = (int) ($summary['failed'] ?? 0) + $failed;
+        $this->update_job($job['id'], array(
+            'cursor_offset' => $next_offset,
+            'summary_json' => wp_json_encode($summary),
+            'message' => 'Synchronizing family dues: ' . $next_offset . ' / ' . $total . '.',
+            'heartbeat_at' => current_time('mysql'),
+        ));
+
+        if ($next_offset < $total && $family_ids) {
+            return array('job_complete' => false);
+        }
+        $this->logger->finish_run($run_id);
+        return array('job_complete' => true);
+    }
+
     private function run_single_phase($phase, $study_year) {
         if ('employees' === $phase) {
             return (new Olama_Oracle_Employee_Importer($this->client, $this->logger))->import_all();
@@ -548,6 +596,9 @@ class Olama_Oracle_Job_Manager {
     }
 
     private function phases_for_scope($scope) {
+        if ('financial_dues' === $scope) {
+            return array('financial_dues');
+        }
         if ('fast' === $scope) {
             return array('fast_sync', 'employees', 'academic', 'transportation', 'validation');
         }
@@ -591,7 +642,10 @@ class Olama_Oracle_Job_Manager {
         }
         $total = max(1, (int) $job['total_phases']);
         $phase_progress = 0;
-        if ('students' === $job['current_phase']) {
+        if ('financial_dues' === $job['current_phase']) {
+            $families = (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$wpdb->prefix}olama_core_families`");
+            $phase_progress = $families > 0 ? min(1, (int) $job['cursor_offset'] / $families) : 1;
+        } elseif ('students' === $job['current_phase']) {
             $families = (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$wpdb->prefix}olama_core_families`");
             if ($families > 0) {
                 $phase_progress = min(1, (int) $job['cursor_offset'] / $families);

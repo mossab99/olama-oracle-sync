@@ -14,9 +14,10 @@ class Olama_Oracle_Student_Importer {
     }
 
     /** Refresh only SCH_FAMILY_DUE_ALLOC for a family and study year. */
-    public function sync_family_dues($oracle_family_id, $study_year) {
+    public function sync_family_dues($oracle_family_id, $study_year, $run_id = null) {
         $study_year = $this->resolve_study_year($study_year);
-        $run_id = $this->logger->start_run('financial_dues');
+        $own_run = !$run_id;
+        $run_id = $run_id ?: $this->logger->start_run('financial_dues');
         try {
             if (!olama_core()->families()->get_by_oracle_id($oracle_family_id)) {
                 throw new RuntimeException('Family does not exist in Olama Core.');
@@ -28,12 +29,16 @@ class Olama_Oracle_Student_Importer {
             }
             $result = olama_core()->financial()->replace_dues_from_source($oracle_family_id, $study_year, $data['due_allocations']);
             $message = 'Financial dues synchronized: ' . (int) $result['count'];
-            $this->logger->log_item($run_id, 'financial_dues', 'ORA-FAM-' . $oracle_family_id, $oracle_family_id, null, 'replaced', 'success', $message);
-            $this->logger->finish_run($run_id);
+            $this->logger->log_item($run_id, 'financial_dues', 'ORA-FAM-' . $oracle_family_id, $oracle_family_id, null, 'updated', 'success', $message);
+            if ($own_run) {
+                $this->logger->finish_run($run_id);
+            }
             return array('success' => true, 'message' => $message, 'run_id' => $run_id);
         } catch (Exception $e) {
             $this->logger->log_item($run_id, 'financial_dues', 'ORA-FAM-' . $oracle_family_id, $oracle_family_id, null, 'failed', 'failed', $e->getMessage());
-            $this->logger->finish_run($run_id, 'failed', $e->getMessage());
+            if ($own_run) {
+                $this->logger->finish_run($run_id, 'failed', $e->getMessage());
+            }
             return array('success' => false, 'message' => $e->getMessage(), 'run_id' => $run_id);
         }
     }

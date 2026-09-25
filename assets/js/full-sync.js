@@ -21,7 +21,8 @@
     var phaseSets = {
         fast: ['fast_sync', 'employees', 'academic', 'transportation', 'validation'],
         complete: ['families', 'students', 'employees', 'academic', 'transportation', 'validation'],
-        family_pipeline: ['families', 'students', 'validation']
+        family_pipeline: ['families', 'students', 'validation'],
+        financial_dues: ['financial_dues']
     };
 
     function request(action, data) {
