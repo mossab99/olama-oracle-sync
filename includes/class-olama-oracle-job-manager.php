@@ -128,6 +128,30 @@ class Olama_Oracle_Job_Manager {
         }
     }
 
+    /** Recover a stalled cron batch from an authenticated progress request. */
+    public function recover_stalled_job($job_id) {
+        $job_id = absint($job_id);
+        $job = $this->get_job($job_id, false);
+        if (!$job || !in_array($job['status'], array('queued', 'running'), true)
+            || get_transient('olama_oracle_job_lock_' . $job_id)) {
+            return;
+        }
+
+        // Both timestamps use the WordPress site timezone.
+        $last_activity = !empty($job['heartbeat_at']) ? $job['heartbeat_at'] : $job['started_at'];
+        if (strtotime(current_time('mysql')) - strtotime($last_activity) < 30) {
+            return;
+        }
+        $next = wp_next_scheduled(self::PROCESS_HOOK, array($job_id));
+        if ($next && $next > time()) {
+            return;
+        }
+
+        // Consume the overdue event so process_job can schedule the next batch.
+        wp_clear_scheduled_hook(self::PROCESS_HOOK, array($job_id));
+        $this->process_job($job_id);
+    }
+
     public function get_job($job_id, $with_counts = true) {
         global $wpdb;
 

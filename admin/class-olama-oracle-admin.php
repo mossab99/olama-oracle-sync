@@ -332,6 +332,7 @@ class Olama_Oracle_Admin {
     public function ajax_sync_job_status() {
         $this->verify_full_sync_ajax();
         $job_id = isset($_POST['job_id']) ? absint($_POST['job_id']) : 0;
+        $this->jobs->recover_stalled_job($job_id);
         $job = $this->jobs->get_job($job_id);
         if (!$job) {
             wp_send_json_error(array('message' => 'Synchronization job not found.'), 404);
