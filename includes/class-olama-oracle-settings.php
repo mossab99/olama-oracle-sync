@@ -33,7 +33,7 @@ class Olama_Oracle_Settings {
             'default_study_year' => isset($input['default_study_year'])
                 ? sanitize_text_field($input['default_study_year'])
                 : sanitize_text_field((string) $existing['default_study_year']),
-            'request_timeout' => isset($input['request_timeout']) ? max(1, absint($input['request_timeout'])) : 30,
+            'request_timeout' => isset($input['request_timeout']) ? max(30, absint($input['request_timeout'])) : 30,
             'batch_size' => isset($input['batch_size']) ? max(1, min(1000, absint($input['batch_size']))) : 100,
             'fast_batch_size' => isset($input['fast_batch_size']) ? max(5, min(50, absint($input['fast_batch_size']))) : 25,
             'store_raw_payloads' => isset($input['store_raw_payloads']) && $input['store_raw_payloads'] === 'yes' ? 'yes' : 'no',

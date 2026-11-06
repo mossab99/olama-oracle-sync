@@ -11,6 +11,7 @@ class WP_Error {
 function is_wp_error($value) { return $value instanceof WP_Error; }
 function untrailingslashit($value) { return rtrim($value, '/'); }
 function sanitize_text_field($value) { return trim((string) $value); }
+function absint($value) { return abs((int) $value); }
 
 class Olama_Oracle_Year_Test_Calendar {
     public function resolve_external_year($source, $value) {

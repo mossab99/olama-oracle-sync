@@ -176,6 +176,7 @@ class Olama_Oracle_Admin {
         echo '<tr><th>وضع التشغيل</th><td><select name="settings[sync_mode]"><option value="manual"' . selected($settings['sync_mode'], 'manual', false) . '>يدوي فقط</option><option value="scheduled"' . selected($settings['sync_mode'], 'scheduled', false) . '>مزامنة شاملة مجدولة</option></select></td></tr>';
         echo '<tr><th>تكرار الجدولة</th><td><select name="settings[schedule_frequency]"><option value="daily"' . selected($settings['schedule_frequency'], 'daily', false) . '>يومياً</option><option value="twicedaily"' . selected($settings['schedule_frequency'], 'twicedaily', false) . '>مرتين يومياً</option><option value="hourly"' . selected($settings['schedule_frequency'], 'hourly', false) . '>كل ساعة</option></select></td></tr>';
         $this->field('مهلة الطلب بالثواني', 'request_timeout', $settings['request_timeout'], 'number');
+        echo '<tr><th></th><td><p class="description">الحد الأدنى لطلبات البيانات 30 ثانية، ولدفعات Fast Sync 60 ثانية. فحص الاتصال السريع مستقل عن مهلة المزامنة.</p></td></tr>';
         $this->field('حجم دفعة المزامنة القياسية', 'batch_size', $settings['batch_size'], 'number');
         $this->field('حجم دفعة Fast Sync', 'fast_batch_size', $settings['fast_batch_size'], 'number');
         echo '<tr><th>حفظ الاستجابات الخام</th><td><select name="settings[store_raw_payloads]"><option value="no"' . selected($settings['store_raw_payloads'], 'no', false) . '>لا — موصى به</option><option value="yes"' . selected($settings['store_raw_payloads'], 'yes', false) . '>نعم، للتشخيص المؤقت</option></select><p class="description">قد تحتوي الاستجابات على بيانات شخصية ومالية. فعّلها فقط عند الحاجة للتشخيص.</p></td></tr>';
@@ -295,12 +296,8 @@ class Olama_Oracle_Admin {
         $connected = !empty($health['success'])
             && 'ok' === ($data['status'] ?? '')
             && 'connected' === ($data['oracle'] ?? '');
-        $failed_job_id = 0;
-        if (!$connected) {
-            $failed_job_id = $this->jobs->fail_active_job_for_disconnect(
-                'Synchronization stopped because Oracle Bridge connectivity was lost.'
-            );
-        }
+        // This short probe can time out while the Bridge is busy serving a
+        // batch. Only the worker's data request may decide that its job failed.
         wp_send_json_success(array(
             'configured' => true,
             'connected' => $connected,
@@ -308,7 +305,7 @@ class Olama_Oracle_Admin {
                 ? 'Oracle Bridge and Oracle database are connected.'
                 : (isset($health['message']) ? $health['message'] : 'Oracle Bridge is unreachable.'),
             'checked_at' => current_time('mysql'),
-            'failed_job_id' => $failed_job_id,
+            'failed_job_id' => 0,
         ));
     }
 

@@ -12,7 +12,9 @@ class Olama_Oracle_Api_Client {
     public function __construct($base_url = null, $api_key = null, $timeout = null) {
         $this->base_url = untrailingslashit($base_url ?: Olama_Oracle_Settings::get('base_url'));
         $this->api_key = $api_key ?: Olama_Oracle_Settings::get('api_key');
-        $this->timeout = $timeout ?: Olama_Oracle_Settings::get('request_timeout');
+        // Data queries need more time than the lightweight connection probe.
+        // Older saved settings may still contain the five-second probe timeout.
+        $this->timeout = max(30, absint($timeout ?: Olama_Oracle_Settings::get('request_timeout')));
     }
 
     public function health($timeout = null) {
@@ -48,7 +50,7 @@ class Olama_Oracle_Api_Client {
             'study_year' => $study_year,
             'limit' => max(1, min(100, absint($limit))),
             'cursor' => max(0, absint($cursor)),
-        ));
+        ), max(60, $this->timeout));
     }
 
     public function get_transportation_buses() {
